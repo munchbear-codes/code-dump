@@ -20,6 +20,7 @@ export class LevelManager {
                         r,
                         kind: tile === GameConfig.TILES.MOVING_BLOCK_VERTICAL ? 'vertical' : 'horizontal',
                         dir: 1,
+                        speed: GameConfig.MOVING_BLOCK_SPEED,
                         lastC: c,
                         lastR: r
                     });
@@ -50,17 +51,17 @@ export class LevelManager {
             block.lastR = block.r;
 
             if (block.kind === 'horizontal') {
-                const nextC = block.c + block.dir;
+                const nextC = block.c + block.dir * block.speed;
                 if (nextC < 0 || nextC >= this.width || this.isBlocked(nextC, block.r, block)) {
                     block.dir *= -1;
                 }
-                block.c += block.dir;
+                block.c += block.dir * block.speed;
             } else {
-                const nextR = block.r + block.dir;
+                const nextR = block.r + block.dir * block.speed;
                 if (nextR < 0 || nextR >= this.height || this.isBlocked(block.c, nextR, block)) {
                     block.dir *= -1;
                 }
-                block.r += block.dir;
+                block.r += block.dir * block.speed;
             }
         });
     }

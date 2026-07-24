@@ -2,23 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fixed: No Falling Through</title>
+    <title>Isometric Platformer - Fixed</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #333; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #2c3e50; font-family: sans-serif; }
         canvas { display: block; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 1px 1px 2px black; pointer-events: none; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 2px 2px 0 #000; pointer-events: none; }
+        .controls { background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; border: 2px solid white; display: inline-block; }
     </style>
 </head>
 <body>
-<div id="ui"><h1>Fixed: Solid Floor</h1><p>Arrows/WASD to Move. Reach Green.</p></div>
+<div id="ui">
+    <h1>🧊 Isometric Platformer</h1>
+    <div class="controls">
+        ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
+        🏃 Run around the room<br>
+        🚩 Reach the <b>Green Flag</b>
+    </div>
+</div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-const TILE = 50;
-// Simple Box: 1=Wall, 0=Empty, 9=Goal
+// --- CONFIG ---
+const TILE_SIZE = 50; 
+const MAP_W = 15;
+const MAP_H = 10;
+
+// Map: 1=Wall, 0=Floor, 9=Goal
+// Enclosed box, empty inside.
 const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -27,18 +40,12 @@ const map = [
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1], // Goal
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-const ROWS = map.length;
-const COLS = map[0].length;
-
-// Spawn EXACTLY on the floor (Row 8 is the floor above the bottom wall at Row 9)
-// Row 9 is all 1s (Wall). Row 8 is 0s (Air).
-// Player height is 0.8 tiles. So if player.y = 8.2, feet are at 9.0 (hitting the wall).
-let player = { x: 7, y: 8.2, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false }; 
+let player = { x: 7, y: 4.2, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false };
 let camera = { x: 0, y: 0 };
 let keys = {};
 
@@ -49,9 +56,8 @@ canvas.width = innerWidth; canvas.height = innerHeight;
 
 function reset() {
     player.x = 7;
-    player.y = 8.2; // Spawn standing on the floor
-    player.vx = 0; 
-    player.vy = 0;
+    player.y = 7.2; // Spawn on the floor (Row 8 is floor, Row 9 is wall)
+    player.vx = 0; player.vy = 0;
     player.grounded = true;
 }
 
@@ -70,87 +76,162 @@ function update() {
     checkCollisions(true);
 
     // Physics Y
-    player.vy += 0.5; // Gravity
+    player.vy += 0.5;
     player.y += player.vy * 0.1;
     player.grounded = false;
     checkCollisions(false);
 
-    // Camera
-    camera.x += ((player.x * TILE) - canvas.width/2 - camera.x) * 0.1;
-    camera.y += ((player.y * TILE) - canvas.height/2 - camera.y) * 0.1;
+    // Camera Follow
+    let targetX = (player.x * TILE_SIZE) - canvas.width/2;
+    let targetY = (player.y * TILE_SIZE) - canvas.height/2;
+    camera.x += (targetX - camera.x) * 0.1;
+    camera.y += (targetY - camera.y) * 0.1;
 }
 
 function checkCollisions(isX) {
-    // Get the range of tiles the player overlaps
     let r1 = Math.floor(player.y);
-    let r2 = Math.floor(player.y + player.h - 0.01); // Slight shrink to avoid double-edge issues
+    let r2 = Math.floor(player.y + player.h - 0.01);
     let c1 = Math.floor(player.x);
     let c2 = Math.floor(player.x + player.w - 0.01);
 
     for(let r = r1; r <= r2; r++) {
         for(let c = c1; c <= c2; c++) {
-            // Bounds check
-            if(r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
-            
+            if(r < 0 || r >= MAP_H || c < 0 || c >= MAP_W) continue;
             let tile = map[r][c];
             
-            if(tile === 1) { // Solid Wall
+            if(tile === 1) { // Wall
                 if(isX) {
                     if(player.vx > 0) player.x = c - player.w - 0.001;
                     else if(player.vx < 0) player.x = c + 1.001;
                     player.vx = 0;
                 } else {
-                    if(player.vy > 0) { // Falling Down
-                        player.y = r - player.h - 0.001; // Snap to top of tile
+                    if(player.vy > 0) {
+                        player.y = r - player.h - 0.001;
                         player.grounded = true;
                         player.vy = 0;
-                    } else if(player.vy < 0) { // Jumping Up
-                        player.y = r + 1.001; // Snap to bottom of tile
+                    } else if(player.vy < 0) {
+                        player.y = r + 1.001;
                         player.vy = 0;
                     }
                 }
             } else if(tile === 9) { // Goal
                 if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
-                    alert("WIN!"); reset();
+                    setTimeout(() => alert("YOU WIN! 🎉"), 10);
+                    reset();
                 }
             }
         }
     }
 }
 
-function draw() {
-    ctx.clearRect(0,0,canvas.width, canvas.height);
-    
-    let startC = Math.floor(camera.x/TILE)-1;
-    let endC = startC + (canvas.width/TILE)+2;
-    let startR = Math.floor(camera.y/TILE)-1;
-    let endR = startR + (canvas.height/TILE)+2;
+// --- ISOMETRIC RENDERING ---
 
+function drawIsoCube(c, r, type) {
+    const x = (c * TILE_SIZE) - camera.x;
+    const y = (r * TILE_SIZE) - camera.y;
+    
+    // Dimensions for the iso effect
+    const w = TILE_SIZE;
+    const h = TILE_SIZE;
+    const depth = 15; // How far the 3D sides stick out
+
+    // 1. Draw Top Face (Lightest)
+    ctx.fillStyle = '#8d6e63';
+    if(type === 9) ctx.fillStyle = '#27ae60';
+    
+    ctx.beginPath();
+    ctx.moveTo(x, y - depth);
+    ctx.lineTo(x + w, y - depth);
+    ctx.lineTo(x + w + depth, y - depth - depth);
+    ctx.lineTo(x + depth, y - depth - depth);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#3e2723';
+    ctx.stroke();
+
+    // 2. Draw Right Face (Darkest)
+    ctx.fillStyle = '#5d4037';
+    if(type === 9) ctx.fillStyle = '#1e8449';
+
+    ctx.beginPath();
+    ctx.moveTo(x + w, y - depth);
+    ctx.lineTo(x + w + depth, y - depth - depth);
+    ctx.lineTo(x + w + depth, y + h - depth - depth);
+    ctx.lineTo(x + w, y + h - depth);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 3. Draw Left Face (Medium)
+    ctx.fillStyle = '#795548';
+    if(type === 9) ctx.fillStyle = '#229954';
+
+    ctx.beginPath();
+    ctx.moveTo(x, y - depth);
+    ctx.lineTo(x + depth, y - depth - depth);
+    ctx.lineTo(x + depth, y + h - depth - depth);
+    ctx.lineTo(x, y + h - depth);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 4. Draw Front Face (The main tile color)
+    ctx.fillStyle = type === 9 ? '#2ecc71' : '#d7ccc8';
+    ctx.fillRect(x, y - depth, w, h);
+    ctx.strokeRect(x, y - depth, w, h);
+
+    // Draw Goal Flag details
+    if(type === 9) {
+        ctx.fillStyle = '#f1c40f';
+        ctx.fillRect(x + 30, y - depth + 10, 4, 20);
+        ctx.beginPath();
+        ctx.moveTo(x + 34, y - depth + 10);
+        ctx.lineTo(x + 50, y - depth + 20);
+        ctx.lineTo(x + 34, y - depth + 30);
+        ctx.fill();
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate visible range
+    let startC = Math.floor(camera.x / TILE_SIZE) - 1;
+    let endC = startC + (canvas.width / TILE_SIZE) + 2;
+    let startR = Math.floor(camera.y / TILE_SIZE) - 1;
+    let endR = startR + (canvas.height / TILE_SIZE) + 2;
+
+    // Draw Map
     for(let r = startR; r <= endR; r++) {
         for(let c = startC; c <= endC; c++) {
-            if(r>=0 && r<ROWS && c>=0 && c<COLS && map[r][c] !== 0) {
-                let x = c*TILE - camera.x;
-                let y = r*TILE - camera.y;
-                let type = map[r][c];
-
-                // Draw Cube
-                ctx.fillStyle = type===9 ? '#2ecc71' : '#d7ccc8';
-                ctx.fillRect(x, y, TILE, TILE);
-                ctx.strokeRect(x, y, TILE, TILE);
-                
-                // 3D effect
-                ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.fillRect(x, y-10, TILE, 10); 
-                ctx.fillRect(x+TILE, y, 10, TILE); 
+            if(r >= 0 && r < MAP_H && c >= 0 && c < MAP_W && map[r][c] !== 0) {
+                drawIsoCube(c, r, map[r][c]);
             }
         }
     }
 
-    // Draw Player
-    let px = player.x*TILE - camera.x;
-    let py = player.y*TILE - camera.y;
-    ctx.fillStyle = 'red';
-    ctx.fillRect(px + 10, py + 10, 30, 40);
+    // Draw Player (Simple Red Block for now)
+    let px = (player.x * TILE_SIZE) - camera.x;
+    let py = (player.y * TILE_SIZE) - camera.y;
+    
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(px + TILE_SIZE/2, py + TILE_SIZE - 2, 12, 5, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(px + (TILE_SIZE * (1-player.w)/2), py + (TILE_SIZE * (1-player.h)), TILE_SIZE * player.w, TILE_SIZE * player.h);
+    
+    // Eyes
+    ctx.fillStyle = 'white';
+    let eyeOff = player.vx >= 0 ? 4 : -4;
+    ctx.fillRect(px + 15 + eyeOff, py + 15, 8, 8);
+    ctx.fillRect(px + 28 + eyeOff, py + 15, 8, 8);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(px + 17 + eyeOff, py + 17, 4, 4);
+    ctx.fillRect(px + 30 + eyeOff, py + 17, 4, 4);
 }
 
 function loop() {

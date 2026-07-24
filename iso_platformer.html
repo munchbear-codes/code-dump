@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Isometric Side-Scroller</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 2px 2px 0 #000; pointer-events: none; }
+        .controls { background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; border: 2px solid #fff; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <h1>🧊 Isometric Block World</h1>
+    <div class="controls">
+        ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
+        🎯 Reach the <b>Green Flag</b><br>
+        ⚠️ Avoid <b>Spikes</b>
+    </div>
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * ASSET REQUESTS
+ * To fully texture the cubes, please provide:
+ * 1. assets/img/block_top.png (Light wood/stone texture)
+ * 2. assets/img/block_left.png (Darker shade of top)
+ * 3. assets/img/block_right.png (Darkest shade)
+ * 4. assets/img/player.png (A character sprite)
+ */
+const ASSETS = {
+    top: 'assets/img/block_top.png',
+    left: 'assets/img/block_left.png',
+    right: 'assets/img/block_right.png',
+    player: 'assets/img/player.png'
+};
+const images = {};
+let loaded = 0;
+Object.entries(ASSETS).forEach(([k,v]) => {
+    const img = new Image(); img.src = v; img.onload = () => loaded++; images[k] = img;
+});
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- CONFIGURATION ---
+const TILE_W = 60; // Width of the isometric tile
+const TILE_H = 30; // Height of the isometric tile (2:1 ratio)
+const BLOCK_DEPTH = 40; // How "deep" the cube looks
+
+// 2D Grid Map (1 = Solid, 0 = Air, 2 = Spike, 3 = Start, 9 = Goal)
+// This is a standard 2D array, but rendered as 3D cubes
+const levelMap = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0]
+];
+
+const rows = levelMap.length;
+const cols = levelMap[0].length;
+
+// Player State (Grid Coordinates)
+let player = {
+    x: 1, y: 1, // Float coordinates
+    vx: 0, vy: 0,
+    w: 0.7, h: 0.9,
+    grounded: false,
+    facingRight: true
+};
+
+// Camera
+let camera = { x: 0, y: 0 };
+
+// Input
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function reset() {
+    for(let r=0; r<rows; r++) {
+        for(let c=0; c<cols; c++) {
+            if(levelMap[r][c] === 3) {
+                player.x = c + 0.15;
+                player.y = r + 0.1;
+                player.vx = 0; player.vy = 0;
+            }
+        }
+    }
+}
+
+// --- PHYSICS (Standard 2D Grid) ---
+function update() {
+    if(keys['ArrowRight'] || keys['KeyD']) { player.vx += 0.8; player.facingRight = true; }
+    if(keys['ArrowLeft'] || keys['KeyA']) { player.vx -= 0.8; player.facingRight = false; }
+    if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
+        player.vy = -11;
+        player.grounded = false;
+    }
+
+    player.vx *= 0.85;
+    player.x += player.vx * 0.1;
+    checkCollision(true);
+
+    player.vy += 0.6;
+    player.y += player.vy * 0.1;
+    player.grounded = false;
+    checkCollision(false);
+
+    if(player.y > rows) reset();
+
+    // Camera Follow
+    const targetX = (player.x * TILE_W) - (canvas.width / 2);
+    const targetY = (player.y * TILE_H) - (canvas.height / 2);
+    camera.x += (targetX - camera.x) * 0.1;
+    camera.y += (targetY - camera.y) * 0.1;
+    
+    // Clamp
+    camera.x = Math.max(0, Math.min(camera.x, (cols * TILE_W) - canvas.width));
+    camera.y = Math.max(0, Math.min(camera.y, (rows * TILE_H) - canvas.height));
+}
+
+function checkCollision(isX) {
+    const r1 = Math.floor(player.y);
+    const r2 = Math.floor(player.y + player.h);
+    const c1 = Math.floor(player.x);
+    const c2 = Math.floor(player.x + player.w);
+
+    for(let r = r1; r <= r2; r++) {
+        for(let c = c1; c <= c2; c++) {
+            if(r < 0 || r >= rows || c < 0 || c >= cols) continue;
+            const tile = levelMap[r][c];
+            
+            if(tile === 1) { // Solid
+                if(isX) {
+                    if(player.vx > 0) player.x = c - player.w - 0.01;
+                    else if(player.vx < 0) player.x = c + 1.01;
+                    player.vx = 0;
+                } else {
+                    if(player.vy > 0) {
+                        player.y = r - player.h - 0.01;
+                        player.grounded = true;
+                        player.vy = 0;
+                    } else if(player.vy < 0) {
+                        player.y = r + 1.01;
+                        player.vy = 0;
+                    }
+                }
+            } else if(tile === 2) { // Spike
+                if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) reset();
+            } else if(tile === 9) { // Goal
+                if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
+                    alert("Level Complete! 🎉");
+                    reset();
+                }
+            }
+        }
+    }
+}
+
+// --- RENDERING (Isometric Cubes on a Vertical Grid) ---
+
+/**
+ * Draws a single Isometric Cube at grid position (c, r)
+ * The cube is "stood on its edge" so we see Top, Left, and Right faces.
+ */
+function drawIsoCube(c, r, type) {
+    // Calculate screen position relative to camera
+    // In a side-view iso grid, X moves right-down, Y moves right-up? 
+    // No, for a "wall" of cubes:
+    // X axis of grid -> moves Right on screen
+    // Y axis of grid -> moves Up on screen
+    // But we draw them with Iso projection to give depth.
+    
+    // Standard Iso projection for a "wall":
+    // The "floor" of the tile is at (c * TILE_W, r * TILE_H)
+    // But we want to simulate depth coming OUT of the screen.
+    
+    const screenX = (c * TILE_W) - camera.x;
+    const screenY = (r * TILE_H) - camera.y;
+
+    // To make it look like a cube sticking out:
+    // We draw the "Front" face at screenX, screenY
+    // Then we draw the "Top" and "Side" faces offset backwards.
+    
+    // Actually, for a side scroller, the "Top" of the block is usually visible if looking from above,
+    // or "Side" if looking from side.
+    // Let's do a "2.5D" effect where blocks have depth towards the top-right.
+    
+    const depthX = 20; // Offset for 3D effect
+    const depthY = -20; 
+
+    // 1. Draw Back Faces (The "sides" of the cube sticking out)
+    // Right Face (Dark)
+    ctx.fillStyle = '#795548';
+    ctx.beginPath();
+    ctx.moveTo(screenX + TILE_W, screenY);
+    ctx.lineTo(screenX + TILE_W + depthX, screenY + depthY);
+    ctx.lineTo(screenX + TILE_W + depthX, screenY + depthY + TILE_H);
+    ctx.lineTo(screenX + TILE_W, screenY + TILE_H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Top Face (Medium)
+    ctx.fillStyle = '#8d6e63';
+    ctx.beginPath();
+    ctx.moveTo(screenX, screenY);
+    ctx.lineTo(screenX + TILE_W, screenY);
+    ctx.lineTo(screenX + TILE_W + depthX, screenY + depthY);
+    ctx.lineTo(screenX + depthX, screenY + depthY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 2. Draw Front Face (The main block surface the player stands on)
+    if(type === 9) ctx.fillStyle = '#2ecc71'; // Goal
+    else if(type === 2) ctx.fillStyle = '#e74c3c'; // Spike base
+    else ctx.fillStyle = '#d7ccc8'; // Normal
+    
+    ctx.fillRect(screenX, screenY, TILE_W, TILE_H);
+    ctx.strokeRect(screenX, screenY, TILE_W, TILE_H);
+
+    // Draw Spike on top if type 2
+    if(type === 2) {
+        ctx.fillStyle = '#c0392b';
+        ctx.beginPath();
+        ctx.moveTo(screenX + 10, screenY + TILE_H);
+        ctx.lineTo(screenX + TILE_W/2, screenY + TILE_H - 20);
+        ctx.lineTo(screenX + TILE_W - 10, screenY + TILE_H);
+        ctx.fill();
+    }
+    
+    // Draw Goal Flag
+    if(type === 9) {
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(screenX + 20, screenY + 10, 4, 30);
+        ctx.fillStyle = '#f1c40f';
+        ctx.beginPath();
+        ctx.moveTo(screenX + 24, screenY + 10);
+        ctx.lineTo(screenX + 40, screenY + 20);
+        ctx.lineTo(screenX + 24, screenY + 30);
+        ctx.fill();
+    }
+}
+
+function drawPlayer() {
+    const px = (player.x * TILE_W) - camera.x;
+    const py = (player.y * TILE_H) - camera.y;
+    
+    // Simple blocky character
+    ctx.fillStyle = '#3498db';
+    ctx.fillRect(px + 10, py + 10, TILE_W - 20, TILE_H - 10);
+    
+    // Eyes
+    ctx.fillStyle = 'white';
+    const ex = player.facingRight ? 25 : 15;
+    ctx.fillRect(px + ex, py + 20, 8, 8);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(px + ex + (player.facingRight?4:0), py + 22, 4, 4);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Culling: Only draw visible blocks
+    const startCol = Math.floor(camera.x / TILE_W) - 1;
+    const endCol = startCol + (canvas.width / TILE_W) + 2;
+    const startRow = Math.floor(camera.y / TILE_H) - 1;
+    const endRow = startRow + (canvas.height / TILE_H) + 2;
+
+    for(let r = startRow; r <= endRow; r++) {
+        for(let c = startCol; c <= endCol; c++) {
+            if(r >= 0 && r < rows && c >= 0 && c < cols) {
+                if(levelMap[r][c] !== 0) {
+                    drawIsoCube(c, r, levelMap[r][c]);
+                }
+            }
+        }
+    }
+
+    drawPlayer();
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+reset();
+loop();
+
+</script>
+</body>
+</html>   

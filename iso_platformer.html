@@ -2,55 +2,42 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Working Iso Platformer</title>
+    <title>Simple Box Demo</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #333; font-family: sans-serif; }
         canvas { display: block; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 2px 2px 0 #000; pointer-events: none; }
-        .controls { background: rgba(0,0,0,0.7); padding: 10px; border-radius: 8px; border: 2px solid white; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 1px 1px 2px black; pointer-events: none; }
     </style>
 </head>
 <body>
-<div id="ui">
-    <h1>🧊 Working Demo: Move & Jump</h1>
-    <div class="controls">
-        ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
-        🏃 Run Right & Jump up the steps<br>
-        🚩 Reach the <b>Green Flag</b> at the top right
-    </div>
-</div>
+<div id="ui"><h1>Simple Box</h1><p>Arrows/WASD to Move. Reach Green.</p></div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- CONFIG ---
-const TILE = 50; 
-const MAP_W = 20;
-const MAP_H = 15;
-
-// Map: 0=Air, 1=Wall, 2=Spike, 3=StartMarker, 9=Goal
-// The '3' is just a visual marker. It is physically AIR.
+const TILE = 50;
+// 15x10 Grid. 
+// 1 = Wall (Border), 0 = Empty Floor, 9 = Goal
+// Completely empty inside.
 const map = [
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,0], // Goal at (17, 2)
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0] // Start Marker at (0, 14)
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1], // Goal at bottom right
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-let player = { x: 0, y: 0, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false };
+const ROWS = map.length;
+const COLS = map[0].length;
+
+let player = { x: 7, y: 4, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false }; // Spawn CENTER
 let camera = { x: 0, y: 0 };
 let keys = {};
 
@@ -60,117 +47,62 @@ window.addEventListener('resize', () => { canvas.width = innerWidth; canvas.heig
 canvas.width = innerWidth; canvas.height = innerHeight;
 
 function reset() {
+    player.x = 7; // Center of 15 width
+    player.y = 4; // Center of 10 height
     player.vx = 0; player.vy = 0;
-    
-    // FIND START MARKER (3)
-    let startX = 2, startY = 2; // Default fallback
-    for(let r=0; r<MAP_H; r++) {
-        for(let c=0; c<MAP_W; c++) {
-            if(map[r][c] === 3) {
-                // SPAWN LOGIC: 
-                // Spawn 1 full tile to the LEFT and 0.5 tiles UP.
-                // This guarantees we are in AIR (0) and not inside the marker or walls.
-                startX = c - 1.0;
-                startY = r - 0.5;
-                break;
-            }
-        }
-    }
-    player.x = startX;
-    player.y = startY;
 }
 
 function update() {
-    // --- PHYSICS TUNED FOR STABILITY ---
-    const ACCEL = 0.8;
-    const FRICTION = 0.85;
-    const GRAVITY = 0.45; // LOWERED to prevent sinking/jitter
-    const JUMP = -14;     // INCREASED to compensate for lower gravity
-    const SPEED_CAP = 8;
-
-    // Input
-    if(keys['ArrowRight'] || keys['KeyD']) {
-        if(player.vx < SPEED_CAP) player.vx += ACCEL;
-    }
-    if(keys['ArrowLeft'] || keys['KeyA']) {
-        if(player.vx > -SPEED_CAP) player.vx -= ACCEL;
-    }
+    if(keys['ArrowRight'] || keys['KeyD']) player.vx += 1;
+    if(keys['ArrowLeft'] || keys['KeyA']) player.vx -= 1;
     if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
-        player.vy = JUMP;
+        player.vy = -14;
         player.grounded = false;
     }
 
-    // Apply X
-    player.vx *= FRICTION;
+    player.vx *= 0.85;
     player.x += player.vx * 0.1;
-    resolveCollision(true);
+    checkCollisions(true);
 
-    // Apply Y
-    player.vy += GRAVITY;
+    player.vy += 0.5;
     player.y += player.vy * 0.1;
     player.grounded = false;
-    resolveCollision(false);
+    checkCollisions(false);
 
-    // Death (Fall off map)
-    if(player.y > MAP_H) reset();
-
-    // Camera Follow
-    let targetX = player.x * TILE - canvas.width/2 + (TILE/2);
-    let targetY = player.y * TILE - canvas.height/2 + (TILE/2);
-    
-    // Smooth camera
-    camera.x += (targetX - camera.x) * 0.1;
-    camera.y += (targetY - camera.y) * 0.1;
-    
-    // Clamp to map bounds
-    camera.x = Math.max(0, Math.min(camera.x, MAP_W*TILE - canvas.width));
-    camera.y = Math.max(0, Math.min(camera.y, MAP_H*TILE - canvas.height));
+    // Camera
+    camera.x += ((player.x * TILE) - canvas.width/2 - camera.x) * 0.1;
+    camera.y += ((player.y * TILE) - canvas.height/2 - camera.y) * 0.1;
 }
 
-function resolveCollision(isX) {
-    // Check surrounding tiles
-    let startCol = Math.floor(player.x);
-    let endCol = Math.floor(player.x + player.w);
-    let startRow = Math.floor(player.y);
-    let endRow = Math.floor(player.y + player.h);
+function checkCollisions(isX) {
+    let r1 = Math.floor(player.y);
+    let r2 = Math.floor(player.y + player.h);
+    let c1 = Math.floor(player.x);
+    let c2 = Math.floor(player.x + player.w);
 
-    for(let r = startRow; r <= endRow; r++) {
-        for(let c = startCol; c <= endCol; c++) {
-            if(r < 0 || r >= MAP_H || c < 0 || c >= MAP_W) continue;
+    for(let r = r1; r <= r2; r++) {
+        for(let c = c1; c <= c2; c++) {
+            if(r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
             let tile = map[r][c];
             
-            // ONLY COLLIDE WITH WALLS (1). 
-            // 3 (Start), 9 (Goal), 2 (Spike) are treated as air for movement.
-            if(tile === 1) { 
+            if(tile === 1) { // Wall
                 if(isX) {
-                    if(player.vx > 0) {
-                        player.x = c - player.w - 0.005; // Push out right
-                    } else if(player.vx < 0) {
-                        player.x = c + 1.005; // Push out left
-                    }
+                    if(player.vx > 0) player.x = c - player.w - 0.01;
+                    else player.x = c + 1.01;
                     player.vx = 0;
                 } else {
-                    if(player.vy > 0) { // Falling down
-                        player.y = r - player.h - 0.005; // Sit on top
+                    if(player.vy > 0) {
+                        player.y = r - player.h - 0.01;
                         player.grounded = true;
                         player.vy = 0;
-                    } else if(player.vy < 0) { // Jumping up
-                        player.y = r + 1.005; // Hit head
+                    } else {
+                        player.y = r + 1.01;
                         player.vy = 0;
                     }
                 }
-            } 
-            // Spike Death Check
-            else if(tile === 2) {
+            } else if(tile === 9) { // Goal
                 if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
-                    reset();
-                }
-            }
-            // Goal Win Check
-            else if(tile === 9) {
-                if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
-                    setTimeout(() => alert("You Made It! 🎉"), 10);
-                    reset();
+                    alert("WIN!"); reset();
                 }
             }
         }
@@ -180,79 +112,27 @@ function resolveCollision(isX) {
 function draw() {
     ctx.clearRect(0,0,canvas.width, canvas.height);
     
-    // Calculate visible range
-    let startCol = Math.floor(camera.x/TILE) - 1;
-    let endCol = startCol + (canvas.width/TILE) + 2;
-    let startRow = Math.floor(camera.y/TILE) - 1;
-    let endRow = startRow + (canvas.height/TILE) + 2;
+    let startC = Math.floor(camera.x/TILE)-1;
+    let endC = startC + (canvas.width/TILE)+2;
+    let startR = Math.floor(camera.y/TILE)-1;
+    let endR = startR + (canvas.height/TILE)+2;
 
-    for(let r = startRow; r <= endRow; r++) {
-        for(let c = startCol; c <= endCol; c++) {
-            if(r>=0 && r<MAP_H && c>=0 && c<MAP_W && map[r][c] !== 0) {
+    for(let r = startR; r <= endR; r++) {
+        for(let c = startC; c <= endC; c++) {
+            if(r>=0 && r<ROWS && c>=0 && c<COLS && map[r][c] !== 0) {
                 let x = c*TILE - camera.x;
                 let y = r*TILE - camera.y;
                 let type = map[r][c];
-                
-                // Draw 3D Cube Effect
-                // Top Face
-                ctx.fillStyle = '#8d6e63';
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-                ctx.lineTo(x+TILE, y);
-                ctx.lineTo(x+TILE+15, y-15);
-                ctx.lineTo(x+15, y-15);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
 
-                // Right Face
-                ctx.fillStyle = '#5d4037';
-                ctx.beginPath();
-                ctx.moveTo(x+TILE, y);
-                ctx.lineTo(x+TILE+15, y-15);
-                ctx.lineTo(x+TILE+15, y+TILE-15);
-                ctx.lineTo(x+TILE, y+TILE);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-
-                // Front Face
-                if(type === 9) ctx.fillStyle = '#2ecc71'; // Goal
-                else if(type === 2) ctx.fillStyle = '#95a5a6'; // Spike Base
-                else if(type === 3) ctx.fillStyle = '#3498db'; // Start Marker
-                else ctx.fillStyle = '#d7ccc8'; // Normal Wall
-                
+                // Draw Cube
+                ctx.fillStyle = type===9 ? '#2ecc71' : '#d7ccc8';
                 ctx.fillRect(x, y, TILE, TILE);
                 ctx.strokeRect(x, y, TILE, TILE);
-
-                // Draw Spike
-                if(type === 2) {
-                    ctx.fillStyle = '#c0392b';
-                    ctx.beginPath();
-                    ctx.moveTo(x+10, y+TILE);
-                    ctx.lineTo(x+25, y+TILE-20);
-                    ctx.lineTo(x+40, y+TILE);
-                    ctx.fill();
-                }
                 
-                // Draw Goal Flag
-                if(type === 9) {
-                    ctx.fillStyle = '#f1c40f';
-                    ctx.fillRect(x+20, y+5, 4, 25);
-                    ctx.beginPath();
-                    ctx.moveTo(x+24, y+5);
-                    ctx.lineTo(x+40, y+15);
-                    ctx.lineTo(x+24, y+25);
-                    ctx.fill();
-                }
-
-                // Draw Start Text
-                if(type === 3) {
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 10px sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText("START", x+TILE/2, y+TILE/2+4);
-                }
+                // 3D Top/Side effect
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.fillRect(x, y-10, TILE, 10); // Top
+                ctx.fillRect(x+TILE, y, 10, TILE); // Side
             }
         }
     }
@@ -260,25 +140,8 @@ function draw() {
     // Draw Player
     let px = player.x*TILE - camera.x;
     let py = player.y*TILE - camera.y;
-    
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(px + TILE/2, py + TILE - 2, 10, 4, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // Body
-    ctx.fillStyle = '#e74c3c'; // Red Player
-    ctx.fillRect(px + (TILE*(1-player.w)/2), py + (TILE*(1-player.h)), TILE*player.w, TILE*player.h);
-    
-    // Eyes
-    ctx.fillStyle = 'white';
-    let eyeOffset = player.vx >= 0 ? 4 : -4;
-    ctx.fillRect(px + 15 + eyeOffset, py + 12, 8, 8);
-    ctx.fillRect(px + 28 + eyeOffset, py + 12, 8, 8);
-    ctx.fillStyle = 'black';
-    ctx.fillRect(px + 17 + eyeOffset, py + 14, 4, 4);
-    ctx.fillRect(px + 30 + eyeOffset, py + 14, 4, 4);
+    ctx.fillStyle = 'red';
+    ctx.fillRect(px + 10, py + 10, 30, 40);
 }
 
 function loop() {

@@ -69,6 +69,43 @@ export class RenderEngine {
         }
     }
 
+    drawMovingBlock(block, camera) {
+        const x = (block.c * GameConfig.TILE_SIZE) - camera.x;
+        const y = (block.r * GameConfig.TILE_SIZE) - camera.y;
+        const frontX = x;
+        const frontY = y - GameConfig.ISO_DEPTH;
+        const size = GameConfig.TILE_SIZE;
+        const depth = GameConfig.ISO_DEPTH;
+        const color = block.kind === 'vertical' ? '#4fc3f7' : '#ffb74d';
+
+        this.ctx.fillStyle = color;
+        this.ctx.strokeStyle = '#263238';
+        this.ctx.lineWidth = 2;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(frontX, frontY);
+        this.ctx.lineTo(frontX + size, frontY);
+        this.ctx.lineTo(frontX + size + depth, frontY - depth);
+        this.ctx.lineTo(frontX + depth, frontY - depth);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = block.kind === 'vertical' ? '#29b6f6' : '#ffa726';
+        this.ctx.beginPath();
+        this.ctx.moveTo(frontX + size, frontY);
+        this.ctx.lineTo(frontX + size + depth, frontY - depth);
+        this.ctx.lineTo(frontX + size + depth, frontY + size - depth);
+        this.ctx.lineTo(frontX + size, frontY + size);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = block.kind === 'vertical' ? '#01579b' : '#ef6c00';
+        this.ctx.fillRect(frontX, frontY, size, size);
+        this.ctx.strokeRect(frontX, frontY, size, size);
+    }
+
     drawPlayer(player, camera) {
         const px = (player.x * GameConfig.TILE_SIZE) - camera.x;
         const py = (player.y * GameConfig.TILE_SIZE) - camera.y;

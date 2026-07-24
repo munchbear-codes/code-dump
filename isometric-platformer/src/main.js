@@ -54,10 +54,16 @@ class GameEngine {
         for (let r = endR; r >= startR; r--) {
             for (let c = startC; c <= endC; c++) {
                 const tileType = this.level.getTile(c, r);
-                if (tileType !== GameConfig.TILES.AIR) {
+                if (tileType !== GameConfig.TILES.AIR
+                    && tileType !== GameConfig.TILES.MOVING_BLOCK_VERTICAL
+                    && tileType !== GameConfig.TILES.MOVING_BLOCK_HORIZONTAL) {
                     this.renderer.drawIsoCube(c, r, tileType, this.camera, this.level);
                 }
             }
+        }
+
+        for (const block of this.level.movingBlocks) {
+            this.renderer.drawMovingBlock(block, this.camera);
         }
 
         this.renderer.drawPlayer(this.player, this.camera);

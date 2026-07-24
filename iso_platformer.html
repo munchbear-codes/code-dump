@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fixed Iso Depth & Layering</title>
+    <title>Fixed Iso Occlusion</title>
     <style>
         body { margin: 0; overflow: hidden; background: #2c3e50; font-family: sans-serif; }
         canvas { display: block; }
@@ -12,10 +12,10 @@
 </head>
 <body>
 <div id="ui">
-    <h1>🧊 Fixed: Depth & Layering</h1>
+    <h1>🧊 Fixed: Cube Occlusion</h1>
     <div class="controls">
         ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
-        🏃 Player is now ON TOP of blocks
+        👁️ Top faces now hidden on solid walls
     </div>
 </div>
 <canvas id="gameCanvas"></canvas>
@@ -27,7 +27,7 @@ const ctx = canvas.getContext('2d');
 const TILE_SIZE = 50; 
 const MAP_W = 15;
 const MAP_H = 10;
-const ISO_DEPTH = 15; // Height of the 3D top/side faces
+const ISO_DEPTH = 15; 
 
 const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
@@ -120,41 +120,55 @@ function drawIsoCube(c, r, type) {
     const x = (c * TILE_SIZE) - camera.x;
     const y = (r * TILE_SIZE) - camera.y;
     
-    // Coordinates for the "Front" face (the main block)
     const frontX = x;
-    const frontY = y - ISO_DEPTH; // Shifted up to make room for top face
+    const frontY = y - ISO_DEPTH; 
     const w = TILE_SIZE;
     const h = TILE_SIZE;
 
-    // 1. Draw Top Face (Behind/Above)
-    ctx.fillStyle = type === 9 ? '#27ae60' : '#8d6e63';
-    ctx.beginPath();
-    ctx.moveTo(frontX, frontY);
-    ctx.lineTo(frontX + w, frontY);
-    ctx.lineTo(frontX + w + ISO_DEPTH, frontY - ISO_DEPTH);
-    ctx.lineTo(frontX + ISO_DEPTH, frontY - ISO_DEPTH);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#3e2723';
-    ctx.stroke();
+    // OCCLUSION CHECK:
+    // Only draw the Top Face if the tile ABOVE (r-1) is EMPTY (0) or out of bounds.
+    // If there is a block above, this block's top is hidden.
+    let hasBlockAbove = false;
+    if(r > 0 && map[r-1][c] !== 0) {
+        hasBlockAbove = true;
+    }
 
-    // 2. Draw Right Face (Behind/Right)
-    ctx.fillStyle = type === 9 ? '#1e8449' : '#5d4037';
-    ctx.beginPath();
-    ctx.moveTo(frontX + w, frontY);
-    ctx.lineTo(frontX + w + ISO_DEPTH, frontY - ISO_DEPTH);
-    ctx.lineTo(frontX + w + ISO_DEPTH, frontY + h - ISO_DEPTH);
-    ctx.lineTo(frontX + w, frontY + h);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    // 1. Draw Top Face (Conditional)
+    if(!hasBlockAbove) {
+        ctx.fillStyle = type === 9 ? '#27ae60' : '#8d6e63';
+        ctx.beginPath();
+        ctx.moveTo(frontX, frontY);
+        ctx.lineTo(frontX + w, frontY);
+        ctx.lineTo(frontX + w + ISO_DEPTH, frontY - ISO_DEPTH);
+        ctx.lineTo(frontX + ISO_DEPTH, frontY - ISO_DEPTH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#3e2723';
+        ctx.stroke();
+    }
 
-    // 3. Draw Left Face (Behind/Left) - Optional for side scroller, but good for corners
-    // Actually, for a side scroller, we usually only see Front, Top, and maybe Right.
-    // Let's skip Left face to keep it clean for a "wall" view, or draw it if needed.
-    // For this specific "wall of blocks" look, we primarily need Front, Top, Right.
-    
-    // 4. Draw Front Face (The main surface)
+    // 2. Draw Right Face
+    // Only draw if the tile to the RIGHT (c+1) is EMPTY? 
+    // Actually, for a side scroller "wall" view, we usually see the Right face of the right-most blocks.
+    // But if there is a block to the right, it covers this block's Right face.
+    let hasBlockRight = false;
+    if(c < MAP_W - 1 && map[r][c+1] !== 0) {
+        hasBlockRight = true;
+    }
+
+    if(!hasBlockRight) {
+        ctx.fillStyle = type === 9 ? '#1e8449' : '#5d4037';
+        ctx.beginPath();
+        ctx.moveTo(frontX + w, frontY);
+        ctx.lineTo(frontX + w + ISO_DEPTH, frontY - ISO_DEPTH);
+        ctx.lineTo(frontX + w + ISO_DEPTH, frontY + h - ISO_DEPTH);
+        ctx.lineTo(frontX + w, frontY + h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // 3. Draw Front Face (Always visible unless covered by player, handled by draw order)
     ctx.fillStyle = type === 9 ? '#2ecc71' : '#d7ccc8';
     ctx.fillRect(frontX, frontY, w, h);
     ctx.strokeRect(frontX, frontY, w, h);
@@ -174,37 +188,21 @@ function drawIsoCube(c, r, type) {
 function drawPlayer() {
     let px = (player.x * TILE_SIZE) - camera.x;
     let py = (player.y * TILE_SIZE) - camera.y;
-    
-    // CRITICAL FIX: 
-    // The block's "floor" is visually at (r * TILE) - ISO_DEPTH + TILE_SIZE.
-    // But our physics 'y' is based on the grid row.
-    // We need to shift the player UP by ISO_DEPTH to match the visual shift of the blocks.
-    // Wait, no. The blocks are drawn at (r*TILE - ISO_DEPTH).
-    // The player physics Y is aligned with the grid row 'r'.
-    // So if player is at row 8, py = 8*TILE.
-    // The block at row 8 is drawn at 8*TILE - ISO_DEPTH.
-    // So the player is drawn ISO_DEPTH pixels TOO LOW.
-    // We must SUBTRACT ISO_DEPTH from the player's draw Y.
-    
     const drawPy = py - ISO_DEPTH;
 
-    // Shadow (on the block surface)
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.beginPath();
     ctx.ellipse(px + TILE_SIZE/2, drawPy + TILE_SIZE - 2, 12, 5, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // Body
     ctx.fillStyle = '#e74c3c';
-    // Center the player in the tile
     const pW = TILE_SIZE * player.w;
     const pH = TILE_SIZE * player.h;
     const pX = px + (TILE_SIZE - pW) / 2;
-    const pY = drawPy + (TILE_SIZE - pH); // Sit on bottom of tile
+    const pY = drawPy + (TILE_SIZE - pH);
     
     ctx.fillRect(pX, pY, pW, pH);
     
-    // Eyes
     ctx.fillStyle = 'white';
     let eyeOff = player.vx >= 0 ? 4 : -4;
     ctx.fillRect(pX + 10 + eyeOff, pY + 10, 8, 8);
@@ -222,7 +220,6 @@ function draw() {
     let startR = Math.floor(camera.y / TILE_SIZE) - 1;
     let endR = startR + (canvas.height / TILE_SIZE) + 2;
 
-    // 1. Draw Map (Background)
     for(let r = startR; r <= endR; r++) {
         for(let c = startC; c <= endC; c++) {
             if(r >= 0 && r < MAP_H && c >= 0 && c < MAP_W && map[r][c] !== 0) {
@@ -231,7 +228,6 @@ function draw() {
         }
     }
 
-    // 2. Draw Player (Foreground - ensures correct layering)
     drawPlayer();
 }
 

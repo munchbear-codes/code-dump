@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Isometric Platformer - Fixed</title>
+    <title>Fixed Iso Depth & Layering</title>
     <style>
         body { margin: 0; overflow: hidden; background: #2c3e50; font-family: sans-serif; }
         canvas { display: block; }
@@ -12,11 +12,10 @@
 </head>
 <body>
 <div id="ui">
-    <h1>🧊 Isometric Platformer</h1>
+    <h1>🧊 Fixed: Depth & Layering</h1>
     <div class="controls">
         ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
-        🏃 Run around the room<br>
-        🚩 Reach the <b>Green Flag</b>
+        🏃 Player is now ON TOP of blocks
     </div>
 </div>
 <canvas id="gameCanvas"></canvas>
@@ -25,13 +24,11 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- CONFIG ---
 const TILE_SIZE = 50; 
 const MAP_W = 15;
 const MAP_H = 10;
+const ISO_DEPTH = 15; // Height of the 3D top/side faces
 
-// Map: 1=Wall, 0=Floor, 9=Goal
-// Enclosed box, empty inside.
 const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -40,12 +37,12 @@ const map = [
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1], // Goal
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
 
-let player = { x: 7, y: 4.2, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false };
+let player = { x: 7, y: 7.2, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false };
 let camera = { x: 0, y: 0 };
 let keys = {};
 
@@ -56,13 +53,12 @@ canvas.width = innerWidth; canvas.height = innerHeight;
 
 function reset() {
     player.x = 7;
-    player.y = 7.2; // Spawn on the floor (Row 8 is floor, Row 9 is wall)
+    player.y = 7.2; 
     player.vx = 0; player.vy = 0;
     player.grounded = true;
 }
 
 function update() {
-    // Input
     if(keys['ArrowRight'] || keys['KeyD']) player.vx += 1;
     if(keys['ArrowLeft'] || keys['KeyA']) player.vx -= 1;
     if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
@@ -70,18 +66,15 @@ function update() {
         player.grounded = false;
     }
 
-    // Physics X
     player.vx *= 0.85;
     player.x += player.vx * 0.1;
     checkCollisions(true);
 
-    // Physics Y
     player.vy += 0.5;
     player.y += player.vy * 0.1;
     player.grounded = false;
     checkCollisions(false);
 
-    // Camera Follow
     let targetX = (player.x * TILE_SIZE) - canvas.width/2;
     let targetY = (player.y * TILE_SIZE) - canvas.height/2;
     camera.x += (targetX - camera.x) * 0.1;
@@ -98,8 +91,7 @@ function checkCollisions(isX) {
         for(let c = c1; c <= c2; c++) {
             if(r < 0 || r >= MAP_H || c < 0 || c >= MAP_W) continue;
             let tile = map[r][c];
-            
-            if(tile === 1) { // Wall
+            if(tile === 1) { 
                 if(isX) {
                     if(player.vx > 0) player.x = c - player.w - 0.001;
                     else if(player.vx < 0) player.x = c + 1.001;
@@ -114,7 +106,7 @@ function checkCollisions(isX) {
                         player.vy = 0;
                     }
                 }
-            } else if(tile === 9) { // Goal
+            } else if(tile === 9) { 
                 if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
                     setTimeout(() => alert("YOU WIN! 🎉"), 10);
                     reset();
@@ -124,84 +116,113 @@ function checkCollisions(isX) {
     }
 }
 
-// --- ISOMETRIC RENDERING ---
-
 function drawIsoCube(c, r, type) {
     const x = (c * TILE_SIZE) - camera.x;
     const y = (r * TILE_SIZE) - camera.y;
     
-    // Dimensions for the iso effect
+    // Coordinates for the "Front" face (the main block)
+    const frontX = x;
+    const frontY = y - ISO_DEPTH; // Shifted up to make room for top face
     const w = TILE_SIZE;
     const h = TILE_SIZE;
-    const depth = 15; // How far the 3D sides stick out
 
-    // 1. Draw Top Face (Lightest)
-    ctx.fillStyle = '#8d6e63';
-    if(type === 9) ctx.fillStyle = '#27ae60';
-    
+    // 1. Draw Top Face (Behind/Above)
+    ctx.fillStyle = type === 9 ? '#27ae60' : '#8d6e63';
     ctx.beginPath();
-    ctx.moveTo(x, y - depth);
-    ctx.lineTo(x + w, y - depth);
-    ctx.lineTo(x + w + depth, y - depth - depth);
-    ctx.lineTo(x + depth, y - depth - depth);
+    ctx.moveTo(frontX, frontY);
+    ctx.lineTo(frontX + w, frontY);
+    ctx.lineTo(frontX + w + ISO_DEPTH, frontY - ISO_DEPTH);
+    ctx.lineTo(frontX + ISO_DEPTH, frontY - ISO_DEPTH);
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = '#3e2723';
     ctx.stroke();
 
-    // 2. Draw Right Face (Darkest)
-    ctx.fillStyle = '#5d4037';
-    if(type === 9) ctx.fillStyle = '#1e8449';
-
+    // 2. Draw Right Face (Behind/Right)
+    ctx.fillStyle = type === 9 ? '#1e8449' : '#5d4037';
     ctx.beginPath();
-    ctx.moveTo(x + w, y - depth);
-    ctx.lineTo(x + w + depth, y - depth - depth);
-    ctx.lineTo(x + w + depth, y + h - depth - depth);
-    ctx.lineTo(x + w, y + h - depth);
+    ctx.moveTo(frontX + w, frontY);
+    ctx.lineTo(frontX + w + ISO_DEPTH, frontY - ISO_DEPTH);
+    ctx.lineTo(frontX + w + ISO_DEPTH, frontY + h - ISO_DEPTH);
+    ctx.lineTo(frontX + w, frontY + h);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // 3. Draw Left Face (Medium)
-    ctx.fillStyle = '#795548';
-    if(type === 9) ctx.fillStyle = '#229954';
-
-    ctx.beginPath();
-    ctx.moveTo(x, y - depth);
-    ctx.lineTo(x + depth, y - depth - depth);
-    ctx.lineTo(x + depth, y + h - depth - depth);
-    ctx.lineTo(x, y + h - depth);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // 4. Draw Front Face (The main tile color)
+    // 3. Draw Left Face (Behind/Left) - Optional for side scroller, but good for corners
+    // Actually, for a side scroller, we usually only see Front, Top, and maybe Right.
+    // Let's skip Left face to keep it clean for a "wall" view, or draw it if needed.
+    // For this specific "wall of blocks" look, we primarily need Front, Top, Right.
+    
+    // 4. Draw Front Face (The main surface)
     ctx.fillStyle = type === 9 ? '#2ecc71' : '#d7ccc8';
-    ctx.fillRect(x, y - depth, w, h);
-    ctx.strokeRect(x, y - depth, w, h);
+    ctx.fillRect(frontX, frontY, w, h);
+    ctx.strokeRect(frontX, frontY, w, h);
 
-    // Draw Goal Flag details
+    // Goal Flag
     if(type === 9) {
         ctx.fillStyle = '#f1c40f';
-        ctx.fillRect(x + 30, y - depth + 10, 4, 20);
+        ctx.fillRect(frontX + 30, frontY + 10, 4, 20);
         ctx.beginPath();
-        ctx.moveTo(x + 34, y - depth + 10);
-        ctx.lineTo(x + 50, y - depth + 20);
-        ctx.lineTo(x + 34, y - depth + 30);
+        ctx.moveTo(frontX + 34, frontY + 10);
+        ctx.lineTo(frontX + 50, frontY + 20);
+        ctx.lineTo(frontX + 34, frontY + 30);
         ctx.fill();
     }
+}
+
+function drawPlayer() {
+    let px = (player.x * TILE_SIZE) - camera.x;
+    let py = (player.y * TILE_SIZE) - camera.y;
+    
+    // CRITICAL FIX: 
+    // The block's "floor" is visually at (r * TILE) - ISO_DEPTH + TILE_SIZE.
+    // But our physics 'y' is based on the grid row.
+    // We need to shift the player UP by ISO_DEPTH to match the visual shift of the blocks.
+    // Wait, no. The blocks are drawn at (r*TILE - ISO_DEPTH).
+    // The player physics Y is aligned with the grid row 'r'.
+    // So if player is at row 8, py = 8*TILE.
+    // The block at row 8 is drawn at 8*TILE - ISO_DEPTH.
+    // So the player is drawn ISO_DEPTH pixels TOO LOW.
+    // We must SUBTRACT ISO_DEPTH from the player's draw Y.
+    
+    const drawPy = py - ISO_DEPTH;
+
+    // Shadow (on the block surface)
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(px + TILE_SIZE/2, drawPy + TILE_SIZE - 2, 12, 5, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Body
+    ctx.fillStyle = '#e74c3c';
+    // Center the player in the tile
+    const pW = TILE_SIZE * player.w;
+    const pH = TILE_SIZE * player.h;
+    const pX = px + (TILE_SIZE - pW) / 2;
+    const pY = drawPy + (TILE_SIZE - pH); // Sit on bottom of tile
+    
+    ctx.fillRect(pX, pY, pW, pH);
+    
+    // Eyes
+    ctx.fillStyle = 'white';
+    let eyeOff = player.vx >= 0 ? 4 : -4;
+    ctx.fillRect(pX + 10 + eyeOff, pY + 10, 8, 8);
+    ctx.fillRect(pX + 22 + eyeOff, pY + 10, 8, 8);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(pX + 12 + eyeOff, pY + 12, 4, 4);
+    ctx.fillRect(pX + 24 + eyeOff, pY + 12, 4, 4);
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Calculate visible range
     let startC = Math.floor(camera.x / TILE_SIZE) - 1;
     let endC = startC + (canvas.width / TILE_SIZE) + 2;
     let startR = Math.floor(camera.y / TILE_SIZE) - 1;
     let endR = startR + (canvas.height / TILE_SIZE) + 2;
 
-    // Draw Map
+    // 1. Draw Map (Background)
     for(let r = startR; r <= endR; r++) {
         for(let c = startC; c <= endC; c++) {
             if(r >= 0 && r < MAP_H && c >= 0 && c < MAP_W && map[r][c] !== 0) {
@@ -210,28 +231,8 @@ function draw() {
         }
     }
 
-    // Draw Player (Simple Red Block for now)
-    let px = (player.x * TILE_SIZE) - camera.x;
-    let py = (player.y * TILE_SIZE) - camera.y;
-    
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(px + TILE_SIZE/2, py + TILE_SIZE - 2, 12, 5, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // Body
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(px + (TILE_SIZE * (1-player.w)/2), py + (TILE_SIZE * (1-player.h)), TILE_SIZE * player.w, TILE_SIZE * player.h);
-    
-    // Eyes
-    ctx.fillStyle = 'white';
-    let eyeOff = player.vx >= 0 ? 4 : -4;
-    ctx.fillRect(px + 15 + eyeOff, py + 15, 8, 8);
-    ctx.fillRect(px + 28 + eyeOff, py + 15, 8, 8);
-    ctx.fillStyle = 'black';
-    ctx.fillRect(px + 17 + eyeOff, py + 17, 4, 4);
-    ctx.fillRect(px + 30 + eyeOff, py + 17, 4, 4);
+    // 2. Draw Player (Foreground - ensures correct layering)
+    drawPlayer();
 }
 
 function loop() {

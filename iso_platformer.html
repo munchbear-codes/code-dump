@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Simple Box Demo</title>
+    <title>Fixed: No Falling Through</title>
     <style>
         body { margin: 0; overflow: hidden; background: #333; font-family: sans-serif; }
         canvas { display: block; }
@@ -10,7 +10,7 @@
     </style>
 </head>
 <body>
-<div id="ui"><h1>Simple Box</h1><p>Arrows/WASD to Move. Reach Green.</p></div>
+<div id="ui"><h1>Fixed: Solid Floor</h1><p>Arrows/WASD to Move. Reach Green.</p></div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
@@ -18,9 +18,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 const TILE = 50;
-// 15x10 Grid. 
-// 1 = Wall (Border), 0 = Empty Floor, 9 = Goal
-// Completely empty inside.
+// Simple Box: 1=Wall, 0=Empty, 9=Goal
 const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -29,7 +27,7 @@ const map = [
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1], // Goal at bottom right
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,9,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ];
@@ -37,7 +35,10 @@ const map = [
 const ROWS = map.length;
 const COLS = map[0].length;
 
-let player = { x: 7, y: 4, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false }; // Spawn CENTER
+// Spawn EXACTLY on the floor (Row 8 is the floor above the bottom wall at Row 9)
+// Row 9 is all 1s (Wall). Row 8 is 0s (Air).
+// Player height is 0.8 tiles. So if player.y = 8.2, feet are at 9.0 (hitting the wall).
+let player = { x: 7, y: 8.2, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false }; 
 let camera = { x: 0, y: 0 };
 let keys = {};
 
@@ -47,24 +48,29 @@ window.addEventListener('resize', () => { canvas.width = innerWidth; canvas.heig
 canvas.width = innerWidth; canvas.height = innerHeight;
 
 function reset() {
-    player.x = 7; // Center of 15 width
-    player.y = 4; // Center of 10 height
-    player.vx = 0; player.vy = 0;
+    player.x = 7;
+    player.y = 8.2; // Spawn standing on the floor
+    player.vx = 0; 
+    player.vy = 0;
+    player.grounded = true;
 }
 
 function update() {
+    // Input
     if(keys['ArrowRight'] || keys['KeyD']) player.vx += 1;
     if(keys['ArrowLeft'] || keys['KeyA']) player.vx -= 1;
     if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
-        player.vy = -14;
+        player.vy = -12;
         player.grounded = false;
     }
 
+    // Physics X
     player.vx *= 0.85;
     player.x += player.vx * 0.1;
     checkCollisions(true);
 
-    player.vy += 0.5;
+    // Physics Y
+    player.vy += 0.5; // Gravity
     player.y += player.vy * 0.1;
     player.grounded = false;
     checkCollisions(false);
@@ -75,28 +81,31 @@ function update() {
 }
 
 function checkCollisions(isX) {
+    // Get the range of tiles the player overlaps
     let r1 = Math.floor(player.y);
-    let r2 = Math.floor(player.y + player.h);
+    let r2 = Math.floor(player.y + player.h - 0.01); // Slight shrink to avoid double-edge issues
     let c1 = Math.floor(player.x);
-    let c2 = Math.floor(player.x + player.w);
+    let c2 = Math.floor(player.x + player.w - 0.01);
 
     for(let r = r1; r <= r2; r++) {
         for(let c = c1; c <= c2; c++) {
+            // Bounds check
             if(r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+            
             let tile = map[r][c];
             
-            if(tile === 1) { // Wall
+            if(tile === 1) { // Solid Wall
                 if(isX) {
-                    if(player.vx > 0) player.x = c - player.w - 0.01;
-                    else player.x = c + 1.01;
+                    if(player.vx > 0) player.x = c - player.w - 0.001;
+                    else if(player.vx < 0) player.x = c + 1.001;
                     player.vx = 0;
                 } else {
-                    if(player.vy > 0) {
-                        player.y = r - player.h - 0.01;
+                    if(player.vy > 0) { // Falling Down
+                        player.y = r - player.h - 0.001; // Snap to top of tile
                         player.grounded = true;
                         player.vy = 0;
-                    } else {
-                        player.y = r + 1.01;
+                    } else if(player.vy < 0) { // Jumping Up
+                        player.y = r + 1.001; // Snap to bottom of tile
                         player.vy = 0;
                     }
                 }
@@ -129,10 +138,10 @@ function draw() {
                 ctx.fillRect(x, y, TILE, TILE);
                 ctx.strokeRect(x, y, TILE, TILE);
                 
-                // 3D Top/Side effect
+                // 3D effect
                 ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.fillRect(x, y-10, TILE, 10); // Top
-                ctx.fillRect(x+TILE, y, 10, TILE); // Side
+                ctx.fillRect(x, y-10, TILE, 10); 
+                ctx.fillRect(x+TILE, y, 10, TILE); 
             }
         }
     }

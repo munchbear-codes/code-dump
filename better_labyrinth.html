@@ -2,22 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Isometric Labyrinth - Wooden Toy</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>True Isometric Labyrinth</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #2c2c2c; font-family: sans-serif; touch-action: none; }
+        body { margin: 0; overflow: hidden; background: #222; font-family: 'Segoe UI', sans-serif; touch-action: none; }
         canvas { display: block; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; text-shadow: 1px 1px 2px black; }
-        #resetBtn { position: absolute; top: 10px; right: 10px; padding: 10px 20px; background: #d35400; color: white; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; }
-        #resetBtn:hover { background: #e67e22; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #eee; pointer-events: none; text-shadow: 1px 1px 2px #000; }
+        .controls-hint { font-size: 0.9em; opacity: 0.8; margin-top: 5px; }
+        #resetBtn { position: absolute; top: 10px; right: 10px; padding: 8px 16px; background: #d35400; color: white; border: 2px solid #a04000; cursor: pointer; border-radius: 4px; font-weight: bold; box-shadow: 0 4px #a04000; }
+        #resetBtn:active { box-shadow: 0 2px #a04000; transform: translateY(2px); }
     </style>
 </head>
 <body>
 
 <div id="ui">
-    <h2>🪵 Isometric Labyrinth</h2>
-    <p>Drag the <b>Knobs</b> below to tilt the board.</p>
-    <p>Get the ball to the <b>Green</b> zone. Avoid <b>Red</b> holes.</p>
+    <h2>🪵 True Isometric Labyrinth</h2>
+    <div class="controls-hint">
+        🖱️ <b>Drag Knobs</b> to tilt<br>
+        ⌨️ <b>Arrow Keys / WASD</b> to tilt
+    </div>
 </div>
 <button id="resetBtn" onclick="resetGame()">Reset Ball</button>
 <canvas id="gameCanvas"></canvas>
@@ -25,41 +28,35 @@
 <script>
 /**
  * ASSET CONFIGURATION
- * Replace these paths with your actual assets.
  */
 const ASSETS = {
     floor: 'assets/img/wood_floor.png',
     wall: 'assets/img/wood_wall.png',
-    knob: 'assets/img/knob_wood.png',
-    ballShadow: 'assets/img/ball_shadow.png'
+    knob: 'assets/img/knob_wood.png'
 };
-
 const images = {};
 let assetsLoaded = 0;
 
 function loadAsset(key, src) {
     const img = new Image();
     img.src = src;
-    img.onload = () => { assetsLoaded++; console.log(`Loaded: ${key}`); };
+    img.onload = () => { assetsLoaded++; };
     images[key] = img;
 }
-
-// Initialize asset loading
-Object.entries(ASSETS).forEach(([key, src]) => loadAsset(key, src));
+Object.entries(ASSETS).forEach(([k, v]) => loadAsset(k, v));
 
 /**
- * GAME CONSTANTS & STATE
+ * GAME CONSTANTS
  */
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-let width, height;
-const TILE_SIZE = 40; // Isometric tile width
-const TILE_HEIGHT = 20; // Isometric tile height (flat)
-const WALL_HEIGHT = 30; // Height of walls
+// True Isometric Constants
+const TILE_W = 60; // Width of a tile
+const TILE_H = 30; // Height of a tile (exactly half width for 30° angle)
+const WALL_H = 40; // Pixel height of walls
 
 // Map: 1=Wall, 0=Floor, 2=Start, 3=Goal, 4=Hole
-// 10x10 Grid
 const mapLayout = [
     [1,1,1,1,1,1,1,1,1,1],
     [1,2,0,0,1,0,0,0,0,1],
@@ -76,379 +73,336 @@ const mapLayout = [
 const mapW = mapLayout[0].length;
 const mapH = mapLayout.length;
 
-// Physics State
-let tiltX = 0; // Range -1 to 1 (Right Knob)
-let tiltY = 0; // Range -1 to 1 (Left Knob)
-const maxTilt = 0.8;
-const friction = 0.96;
-const gravity = 0.15;
+// Physics
+let tiltX = 0; // -1 to 1
+let tiltY = 0; // -1 to 1
+const FRICTION = 0.96;
+const GRAVITY = 0.25;
+const KEY_TILT_SPEED = 0.05; // How fast keyboard tilts
 
-let ball = {
-    x: 1.5 * TILE_SIZE, // Logical X (pixels in grid space)
-    y: 1.5 * TILE_SIZE, // Logical Y
-    vx: 0,
-    vy: 0,
-    radius: 12,
-    z: 0 // Height for jumping/falling
-};
-
+let ball = { x: 0, y: 0, vx: 0, vy: 0, r: 14, z: 0 };
 let startPos = { x: 1, y: 1 };
 
-// Knob State
+// Input State
+let keys = { up: false, down: false, left: false, right: false };
 let knobs = {
-    left: { x: 0, y: 0, dragging: false, value: 0 },
-    right: { x: 0, y: 0, dragging: false, value: 0 }
+    left: { x: 0, y: 0, dragX: 0, active: false },
+    right: { x: 0, y: 0, dragX: 0, active: false }
 };
 
 /**
- * RESIZE & INIT
+ * SETUP & RESIZE
  */
 function resize() {
-    width = window.innerWidth;
-    height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
-    updateKnobPositions();
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    updateKnobLayout();
 }
 window.addEventListener('resize', resize);
 resize();
 
+function updateKnobLayout() {
+    const y = canvas.height - 70;
+    const gap = canvas.width / 3;
+    knobs.left.x = gap;
+    knobs.left.y = y;
+    knobs.right.x = canvas.width - gap;
+    knobs.right.y = y;
+}
+
 function resetGame() {
-    // Find start pos
     for(let y=0; y<mapH; y++) {
         for(let x=0; x<mapW; x++) {
             if(mapLayout[y][x] === 2) {
                 startPos = { x, y };
-                ball.x = x * TILE_SIZE + TILE_SIZE/2;
-                ball.y = y * TILE_SIZE + TILE_SIZE/2;
-                ball.vx = 0;
-                ball.vy = 0;
-                ball.z = 0;
+                ball.x = x * TILE_W; // Logical coordinates (not iso yet)
+                ball.y = y * TILE_W; 
+                ball.vx = 0; ball.vy = 0; ball.z = 0;
             }
         }
     }
 }
 
 /**
- * ISOMETRIC PROJECTION
+ * TRUE ISOMETRIC MATH
  * Converts Grid (x,y) to Screen (x,y)
+ * Formula: x' = (x - y) * cos(30), y' = (x + y) * sin(30)
+ * Simplified for 2:1 ratio:
  */
 function toIso(x, y, z = 0) {
-    const originX = width / 2;
-    const originY = height / 3; // Shift up to make room for knobs
+    const originX = canvas.width / 2;
+    const originY = canvas.height / 3.5; // Push down slightly
     
-    const isoX = originX + (x - y) * TILE_SIZE;
-    const isoY = originY + (x + y) * TILE_HEIGHT - z;
+    // Convert logical pixel coords to grid units for calculation
+    const gx = x / TILE_W;
+    const gy = y / TILE_W;
+
+    const screenX = originX + (gx - gy) * TILE_W;
+    const screenY = originY + (gx + gy) * TILE_H - z;
     
-    return { x: isoX, y: isoY };
+    return { x: screenX, y: screenY };
 }
 
 /**
- * INPUT HANDLING (Knobs)
+ * INPUT HANDLING (Keyboard + Mouse)
  */
-function updateKnobPositions() {
-    const knobY = height - 80;
-    const spacing = width / 3;
-    
-    knobs.left.x = spacing;
-    knobs.left.y = knobY;
-    
-    knobs.right.x = width - spacing;
-    knobs.right.y = knobY;
+window.addEventListener('keydown', e => {
+    if(e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = true;
+    if(e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = true;
+    if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
+    if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+});
+
+window.addEventListener('keyup', e => {
+    if(e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.up = false;
+    if(e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.down = false;
+    if(e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+    if(e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+});
+
+// Mouse/Touch for Knobs
+const getPos = e => e.touches ? {x:e.touches[0].clientX, y:e.touches[0].clientY} : {x:e.clientX, y:e.clientY};
+
+canvas.addEventListener('mousedown', startDrag);
+canvas.addEventListener('touchstart', startDrag, {passive:false});
+window.addEventListener('mousemove', moveDrag);
+window.addEventListener('touchmove', e => { e.preventDefault(); moveDrag(e); }, {passive:false});
+window.addEventListener('mouseup', endDrag);
+window.addEventListener('touchend', endDrag);
+
+function startDrag(e) {
+    const p = getPos(e);
+    ['left', 'right'].forEach(k => {
+        if(Math.hypot(p.x - knobs[k].x, p.y - knobs[k].y) < 50) knobs[k].active = true;
+    });
 }
 
-function getPointerPos(e) {
-    if(e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    return { x: e.clientX, y: e.clientY };
-}
-
-function handleStart(e) {
-    const pos = getPointerPos(e);
-    ['left', 'right'].forEach(key => {
-        const k = knobs[key];
-        const dist = Math.hypot(pos.x - k.x, pos.y - k.y);
-        if(dist < 60) {
-            k.dragging = true;
+function moveDrag(e) {
+    const p = getPos(e);
+    ['left', 'right'].forEach(k => {
+        if(knobs[k].active) {
+            let dx = p.x - knobs[k].x;
+            dx = Math.max(-50, Math.min(50, dx)); // Clamp
+            knobs[k].dragX = dx;
+            
+            // Map drag to tilt (-0.8 to 0.8)
+            if(k === 'left') tiltY = (dx / 50) * 0.8;
+            if(k === 'right') tiltX = (dx / 50) * 0.8;
         }
     });
 }
 
-function handleMove(e) {
-    const pos = getPointerPos(e);
-    
-    ['left', 'right'].forEach(key => {
-        const k = knobs[key];
-        if(k.dragging) {
-            // Calculate drag offset relative to center
-            let dx = pos.x - k.x;
-            // Clamp drag distance
-            dx = Math.max(-60, Math.min(60, dx));
-            
-            // Update visual knob position (only X moves)
-            k.currentX = k.x + dx;
-            
-            // Normalize value -1 to 1
-            const val = dx / 60;
-            
-            if(key === 'left') tiltY = val * maxTilt;
-            if(key === 'right') tiltX = val * maxTilt;
-        }
-    });
+function endDrag() {
+    knobs.left.active = false; knobs.right.active = false;
+    knobs.left.dragX = 0; knobs.right.dragX = 0;
 }
-
-function handleEnd() {
-    knobs.left.dragging = false;
-    knobs.right.dragging = false;
-    knobs.left.currentX = knobs.left.x;
-    knobs.right.currentX = knobs.right.x;
-    // Optional: Auto-center knobs? 
-    // For a wooden toy feel, maybe they stay or spring back. Let's spring back slowly in update.
-}
-
-canvas.addEventListener('mousedown', handleStart);
-canvas.addEventListener('mousemove', handleMove);
-window.addEventListener('mouseup', handleEnd);
-canvas.addEventListener('touchstart', handleStart, {passive: false});
-canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, {passive: false});
-window.addEventListener('touchend', handleEnd);
 
 /**
- * PHYSICS & LOGIC
+ * PHYSICS LOOP
  */
 function update() {
-    // Spring knobs back to center slightly for better control feel
-    knobs.left.value = knobs.left.value * 0.9;
-    knobs.right.value = knobs.right.value * 0.9;
+    // 1. Calculate Tilt from Keyboard
+    let keyTiltX = 0;
+    let keyTiltY = 0;
+    if(keys.up) keyTiltY = -1;
+    if(keys.down) keyTiltY = 1;
+    if(keys.left) keyTiltX = -1;
+    if(keys.right) keyTiltX = 1;
+
+    // Smoothly interpolate current tilt towards keyboard target
+    // If knobs are active, they override keyboard slightly or mix? 
+    // Let's mix: Keyboard acts as a constant force, Knobs act as direct position.
+    // Actually, simpler: Keyboard sets a target tilt, Knob sets direct tilt.
+    // If keys are pressed, we add to the tilt.
     
-    // Apply tilt to velocity
-    // Tilt X affects movement along the X axis of the grid
-    // Tilt Y affects movement along the Y axis of the grid
-    ball.vx += tiltX * gravity;
-    ball.vy += tiltY * gravity;
-    
-    ball.vx *= friction;
-    ball.vy *= friction;
-    
-    // Proposed new position
+    const targetTiltX = keyTiltX * 0.8;
+    const targetTiltY = keyTiltY * 0.8;
+
+    // If knob is active, it dominates. If not, keyboard springs to target.
+    if(!knobs.right.active) {
+        tiltX += (targetTiltX - tiltX) * 0.1;
+    }
+    if(!knobs.left.active) {
+        tiltY += (targetTiltY - tiltY) * 0.1;
+    }
+
+    // 2. Apply Physics
+    ball.vx += tiltX * GRAVITY;
+    ball.vy += tiltY * GRAVITY;
+    ball.vx *= FRICTION;
+    ball.vy *= FRICTION;
+
+    // 3. Collision (Grid based)
     let nextX = ball.x + ball.vx;
     let nextY = ball.y + ball.vy;
     
-    // Collision Detection (Grid Based)
-    // Check corners of the ball's bounding box
-    const checkCollision = (px, py) => {
-        const gx = Math.floor(px / TILE_SIZE);
-        const gy = Math.floor(py / TILE_SIZE);
-        
-        if(gx < 0 || gx >= mapW || gy < 0 || gy >= mapH) return true; // Out of bounds
-        
-        const tile = mapLayout[gy][gx];
-        if(tile === 1) return true; // Wall
-        if(tile === 4) {
-            // Hole: if speed is low, fall in. For now, just reset if touched
-            resetGame();
-            return false;
-        }
-        if(tile === 3) {
-            // Goal
-            // Simple win condition: stop ball
-            ball.vx = 0; ball.vy = 0;
-            alert("You Win! 🎉");
-            resetGame();
-        }
+    const check = (x, y) => {
+        const gx = Math.floor(x / TILE_W);
+        const gy = Math.floor(y / TILE_W);
+        if(gx<0||gx>=mapW||gy<0||gy>=mapH) return true;
+        const t = mapLayout[gy][gx];
+        if(t===1) return true; // Wall
+        if(t===4) { resetGame(); return true; } // Hole
+        if(t===3) { alert("Win!"); resetGame(); return true; } // Goal
         return false;
     };
 
-    // Simple circle vs grid collision
-    // Check 4 points around the ball
-    const r = ball.radius * 0.8; // Slightly smaller than visual radius for forgiveness
-    if(checkCollision(nextX - r, ball.y)) ball.vx *= -0.5;
-    else if(checkCollision(nextX + r, ball.y)) ball.vx *= -0.5;
+    const r = ball.r * 0.8;
+    // X Axis Collision
+    if(check(nextX - (keys.left?r:-r), ball.y)) ball.vx *= -0.5;
     else ball.x = nextX;
 
-    if(checkCollision(ball.x, nextY - r)) ball.vy *= -0.5;
-    else if(checkCollision(ball.x, nextY + r)) ball.vy *= -0.5;
+    // Y Axis Collision
+    if(check(ball.x, nextY - (keys.up?r:-r))) ball.vy *= -0.5;
     else ball.y = nextY;
 }
 
 /**
- * RENDERING
+ * RENDERING (Corrected Cubes)
  */
-function drawCube(x, y, zTop, colorTop, colorSide) {
-    const pos = toIso(x, y, zTop);
-    const w = TILE_SIZE;
-    const h = TILE_HEIGHT;
-    
-    // Draw Side Faces (Walls) if zTop > 0
-    if(zTop > 0) {
-        // Left Face
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-        ctx.lineTo(pos.x - w, pos.y - w * 0.5); // Approx iso angle
-        ctx.lineTo(pos.x - w, pos.y - w * 0.5 + zTop);
-        ctx.lineTo(pos.x, pos.y + zTop);
-        ctx.closePath();
-        ctx.fillStyle = colorSide; // Darker
-        ctx.fill();
-        ctx.stroke();
-
-        // Right Face
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-        ctx.lineTo(pos.x + w, pos.y - w * 0.5);
-        ctx.lineTo(pos.x + w, pos.y - w * 0.5 + zTop);
-        ctx.lineTo(pos.x, pos.y + zTop);
-        ctx.closePath();
-        ctx.fillStyle = shadeColor(colorSide, -20); // Even darker
-        ctx.fill();
-        ctx.stroke();
-    }
-
-    // Top Face
+function drawCubeFace(ctx, x, y, z, color) {
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y - zTop);
-    ctx.lineTo(pos.x - w, pos.y - w * 0.5 - zTop);
-    ctx.lineTo(pos.x, pos.y - w - zTop);
-    ctx.lineTo(pos.x + w, pos.y - w * 0.5 - zTop);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + TILE_W, y + TILE_H);
+    ctx.lineTo(x, y + TILE_H * 2);
+    ctx.lineTo(x - TILE_W, y + TILE_H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+}
+
+function drawBlock(gx, gy, type) {
+    const pos = toIso(gx * TILE_W, gy * TILE_W, 0);
+    const isWall = type === 1;
+    const h = isWall ? WALL_H : 0;
+
+    // 1. Draw Top Face
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y - h);
+    ctx.lineTo(pos.x + TILE_W, pos.y + TILE_H - h);
+    ctx.lineTo(pos.x, pos.y + TILE_H * 2 - h);
+    ctx.lineTo(pos.x - TILE_W, pos.y + TILE_H - h);
     ctx.closePath();
     
     // Texture or Color
-    if(images.floor && zTop === 0) {
-        ctx.save();
-        ctx.clip();
-        // Simple pattern draw (would need proper mapping for true iso texture)
-        ctx.fillStyle = colorTop;
+    if(type === 3) ctx.fillStyle = '#2ecc71'; // Goal Green
+    else if(type === 4) ctx.fillStyle = '#c0392b'; // Hole Red (hidden mostly)
+    else ctx.fillStyle = isWall ? '#8d6e63' : '#d7ccc8';
+    
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.stroke();
+
+    if(type === 4) {
+        // Draw Hole depth
+        ctx.fillStyle = '#1a0505';
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y - h + 10);
+        ctx.lineTo(pos.x + TILE_W, pos.y + TILE_H - h + 10);
+        ctx.lineTo(pos.x, pos.y + TILE_H * 2 - h + 10);
+        ctx.lineTo(pos.x - TILE_W, pos.y + TILE_H - h + 10);
         ctx.fill();
-        ctx.restore();
-    } else {
-        ctx.fillStyle = colorTop;
+    }
+
+    if (h > 0) {
+        // 2. Draw Right Face (Vertical)
+        ctx.beginPath();
+        ctx.moveTo(pos.x + TILE_W, pos.y + TILE_H - h);
+        ctx.lineTo(pos.x + TILE_W, pos.y + TILE_H - h + WALL_H);
+        ctx.lineTo(pos.x, pos.y + TILE_H * 2 - h + WALL_H);
+        ctx.lineTo(pos.x, pos.y + TILE_H * 2 - h);
+        ctx.closePath();
+        ctx.fillStyle = '#5d4037'; // Darker side
+        ctx.fill();
+        ctx.stroke();
+
+        // 3. Draw Left Face (Vertical)
+        ctx.beginPath();
+        ctx.moveTo(pos.x - TILE_W, pos.y + TILE_H - h);
+        ctx.lineTo(pos.x - TILE_W, pos.y + TILE_H - h + WALL_H);
+        ctx.lineTo(pos.x, pos.y + TILE_H * 2 - h + WALL_H);
+        ctx.lineTo(pos.x, pos.y + TILE_H * 2 - h);
+        ctx.closePath();
+        ctx.fillStyle = '#795548'; // Medium side
         ctx.fill();
         ctx.stroke();
     }
 }
 
 function drawBall() {
-    const pos = toIso(ball.x / TILE_SIZE, ball.y / TILE_SIZE, -ball.z);
-    
+    // Calculate Iso position of ball
+    // Ball Z is 0 unless falling in hole (not implemented for simplicity, stays on top)
+    const pos = toIso(ball.x, ball.y, 0);
+    // Offset Y visually to sit "on" the tile
+    const drawY = pos.y + TILE_H - ball.r; 
+
     // Shadow
-    ctx.beginPath();
-    ctx.ellipse(pos.x, pos.y + 10, ball.radius, ball.radius * 0.5, 0, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(pos.x, drawY + ball.r, ball.r, ball.r*0.4, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // Ball Body (Pseudo 3D sphere using gradient)
-    const grad = ctx.createRadialGradient(pos.x - 5, pos.y - 5 - ball.z, 2, pos.x, pos.y - ball.z, ball.radius);
-    grad.addColorStop(0, '#ffcc00'); // Highlight
-    grad.addColorStop(1, '#b35900'); // Shadow
+    // Sphere
+    const grad = ctx.createRadialGradient(pos.x - 5, drawY - 5, 2, pos.x, drawY, ball.r);
+    grad.addColorStop(0, '#f1c40f');
+    grad.addColorStop(1, '#b7950b');
     
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y - ball.z, ball.radius, 0, Math.PI * 2);
+    ctx.arc(pos.x, drawY, ball.r, 0, Math.PI*2);
     ctx.fillStyle = grad;
     ctx.fill();
-    ctx.strokeStyle = '#5c2e00';
+    ctx.strokeStyle = '#7e6605';
     ctx.stroke();
 }
 
-function drawKnob(knob, label) {
-    const x = knob.currentX || knob.x;
-    const y = knob.y;
+function drawKnob(k, label) {
+    const x = k.x + k.dragX;
+    const y = k.y;
     
-    // Base
-    ctx.beginPath();
-    ctx.arc(x, y, 50, 0, Math.PI * 2);
+    // Base Plate
     ctx.fillStyle = '#3e2723';
-    ctx.fill();
-    ctx.strokeStyle = '#5d4037';
-    ctx.lineWidth = 4;
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(k.x, k.y, 45, 0, Math.PI*2); ctx.fill();
     
-    // Handle (The part you drag)
-    ctx.beginPath();
-    if(images.knob && assetsLoaded > 2) {
-        ctx.drawImage(images.knob, x - 25, y - 25, 50, 50);
+    // Knob Head
+    ctx.beginPath(); ctx.arc(x, y, 25, 0, Math.PI*2);
+    if(images.knob && assetsLoaded > 0) {
+        ctx.save(); ctx.clip();
+        ctx.drawImage(images.knob, x-25, y-25, 50, 50);
+        ctx.restore();
     } else {
-        ctx.arc(x, y, 25, 0, Math.PI * 2);
-        ctx.fillStyle = '#8d6e63';
-        ctx.fill();
-        ctx.strokeStyle = '#3e2723';
-        ctx.stroke();
-        // Direction indicator
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + 20 * (knob.dragging ? 1 : 0), y); 
-        ctx.stroke();
+        ctx.fillStyle = '#a1887f'; ctx.fill();
+        ctx.strokeStyle = '#3e2723'; ctx.lineWidth=3; ctx.stroke();
     }
     
     // Label
-    ctx.fillStyle = 'white';
-    ctx.font = '14px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x, y + 70);
+    ctx.fillStyle = '#aaa'; ctx.font = '12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(label, k.x, y + 60);
 }
 
-function shadeColor(color, percent) {
-    // Helper to darken/lighten hex colors for pseudo-3D
-    let R = parseInt(color.substring(1,3),16);
-    let G = parseInt(color.substring(3,5),16);
-    let B = parseInt(color.substring(5,7),16);
-
-    R = Math.min(255, Math.max(0, R + Math.floor(255 * (percent/100))));
-    G = Math.min(255, Math.max(0, G + Math.floor(255 * (percent/100))));
-    B = Math.min(255, Math.max(0, B + Math.floor(255 * (percent/100))));
-
-    return "#" + ((1 << 24) + (R << 16) + (G << 8) + B).toString(16).slice(1);
-}
-
-function render() {
-    ctx.clearRect(0, 0, width, height);
+function loop() {
+    ctx.clearRect(0,0,canvas.width, canvas.height);
     
-    // Draw Map
-    // Painter's algorithm: Draw from back (0,0) to front (max, max)
+    // Draw Map (Back to Front)
     for(let y=0; y<mapH; y++) {
         for(let x=0; x<mapW; x++) {
-            const tile = mapLayout[y][x];
-            const isoPos = toIso(x, y);
-            
-            if(tile === 1) {
-                // Wall
-                drawCube(x, y, WALL_HEIGHT, '#8d6e63', '#5d4037');
-            } else {
-                // Floor
-                drawCube(x, y, 0, '#d7ccc8', '#a1887f');
-                
-                // Special Tiles
-                if(tile === 3) { // Goal
-                    ctx.fillStyle = 'rgba(0, 255, 0, 0.6)';
-                    ctx.beginPath();
-                    ctx.moveTo(isoPos.x, isoPos.y);
-                    ctx.lineTo(isoPos.x - TILE_SIZE, isoPos.y - TILE_HEIGHT);
-                    ctx.lineTo(isoPos.x, isoPos.y - TILE_SIZE);
-                    ctx.lineTo(isoPos.x + TILE_SIZE, isoPos.y - TILE_HEIGHT);
-                    ctx.fill();
-                }
-                if(tile === 4) { // Hole
-                    ctx.fillStyle = '#3e0000';
-                    ctx.beginPath();
-                    ctx.ellipse(isoPos.x, isoPos.y, 15, 8, 0, 0, Math.PI*2);
-                    ctx.fill();
-                }
-            }
+            drawBlock(x, y, mapLayout[y][x]);
         }
     }
     
     drawBall();
     
-    // Draw UI Knobs
+    // Draw UI
     drawKnob(knobs.left, "Tilt Y (Up/Down)");
     drawKnob(knobs.right, "Tilt X (Left/Right)");
     
-    requestAnimationFrame(render);
+    requestAnimationFrame(loop);
 }
 
-// Start Loop
+// Init
 resetGame();
-updateKnobPositions();
-setInterval(update, 1000/60); // Physics at 60fps
-render();
+setInterval(update, 1000/60);
+loop();
 
 </script>
 </body>

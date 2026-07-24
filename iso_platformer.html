@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fixed Iso Occlusion</title>
+    <title>Fixed Draw Order</title>
     <style>
         body { margin: 0; overflow: hidden; background: #2c3e50; font-family: sans-serif; }
         canvas { display: block; }
@@ -12,10 +12,11 @@
 </head>
 <body>
 <div id="ui">
-    <h1>🧊 Fixed: Cube Occlusion</h1>
+    <h1>🧊 Fixed: Draw Order (Bottom-Up)</h1>
     <div class="controls">
         ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
-        👁️ Top faces now hidden on solid walls
+        ✅ Bottom rows drawn first<br>
+        ✅ Top rows paint over Bottom rows' top faces
     </div>
 </div>
 <canvas id="gameCanvas"></canvas>
@@ -125,15 +126,11 @@ function drawIsoCube(c, r, type) {
     const w = TILE_SIZE;
     const h = TILE_SIZE;
 
-    // OCCLUSION CHECK:
-    // Only draw the Top Face if the tile ABOVE (r-1) is EMPTY (0) or out of bounds.
-    // If there is a block above, this block's top is hidden.
-    let hasBlockAbove = false;
-    if(r > 0 && map[r-1][c] !== 0) {
-        hasBlockAbove = true;
-    }
+    // OCCLUSION CHECKS
+    let hasBlockAbove = (r > 0 && map[r-1][c] !== 0);
+    let hasBlockRight = (c < MAP_W - 1 && map[r][c+1] !== 0);
 
-    // 1. Draw Top Face (Conditional)
+    // 1. Draw Top Face (Only if air above)
     if(!hasBlockAbove) {
         ctx.fillStyle = type === 9 ? '#27ae60' : '#8d6e63';
         ctx.beginPath();
@@ -147,15 +144,7 @@ function drawIsoCube(c, r, type) {
         ctx.stroke();
     }
 
-    // 2. Draw Right Face
-    // Only draw if the tile to the RIGHT (c+1) is EMPTY? 
-    // Actually, for a side scroller "wall" view, we usually see the Right face of the right-most blocks.
-    // But if there is a block to the right, it covers this block's Right face.
-    let hasBlockRight = false;
-    if(c < MAP_W - 1 && map[r][c+1] !== 0) {
-        hasBlockRight = true;
-    }
-
+    // 2. Draw Right Face (Only if air to right)
     if(!hasBlockRight) {
         ctx.fillStyle = type === 9 ? '#1e8449' : '#5d4037';
         ctx.beginPath();
@@ -168,12 +157,11 @@ function drawIsoCube(c, r, type) {
         ctx.stroke();
     }
 
-    // 3. Draw Front Face (Always visible unless covered by player, handled by draw order)
+    // 3. Draw Front Face
     ctx.fillStyle = type === 9 ? '#2ecc71' : '#d7ccc8';
     ctx.fillRect(frontX, frontY, w, h);
     ctx.strokeRect(frontX, frontY, w, h);
 
-    // Goal Flag
     if(type === 9) {
         ctx.fillStyle = '#f1c40f';
         ctx.fillRect(frontX + 30, frontY + 10, 4, 20);
@@ -220,9 +208,18 @@ function draw() {
     let startR = Math.floor(camera.y / TILE_SIZE) - 1;
     let endR = startR + (canvas.height / TILE_SIZE) + 2;
 
-    for(let r = startR; r <= endR; r++) {
+    // CLAMP TO MAP BOUNDS
+    startC = Math.max(0, startC);
+    endC = Math.min(MAP_W - 1, endC);
+    startR = Math.max(0, startR);
+    endR = Math.min(MAP_H - 1, endR);
+
+    // FIX: Draw Order
+    // Rows: Bottom (High Index) to Top (Low Index)
+    // Cols: Left (Low Index) to Right (High Index)
+    for(let r = endR; r >= startR; r--) { 
         for(let c = startC; c <= endC; c++) {
-            if(r >= 0 && r < MAP_H && c >= 0 && c < MAP_W && map[r][c] !== 0) {
+            if(map[r][c] !== 0) {
                 drawIsoCube(c, r, map[r][c]);
             }
         }

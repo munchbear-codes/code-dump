@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple Labyrinth Demo</title>
+  <style>
+    body { display: flex; justify-content: center; background: #222; }
+    canvas { border: 2px solid #fff; background: #000; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="400"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Game State
+    const player = { x: 20, y: 20, size: 10, speed: 2 };
+    const keys = {};
+
+    // Input Handling
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
+
+    function update() {
+      if (keys['ArrowUp']) player.y -= player.speed;
+      if (keys['ArrowDown']) player.y += player.speed;
+      if (keys['ArrowLeft']) player.x -= player.speed;
+      if (keys['ArrowRight']) player.x += player.speed;
+      
+      // Boundary checks would go here
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw Player
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(player.x, player.y, player.size, player.size);
+      
+      // Draw Maze Walls (Example static wall)
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(50, 0, 10, 300);
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>   

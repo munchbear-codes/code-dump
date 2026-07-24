@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Grid Block Platformer Prototype</title>
+    <title>Grid Platformer - Camera Follow</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #2c3e50; font-family: 'Comic Sans MS', sans-serif; }
-        canvas { display: block; image-rendering: pixelated; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; /* Sky Blue */ font-family: 'Comic Sans MS', sans-serif; }
+        canvas { display: block; }
         #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 2px 2px 0 #000; pointer-events: none; }
-        .controls { font-size: 14px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; }
+        .controls { font-size: 14px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; border: 2px solid #fff; }
     </style>
 </head>
 <body>
@@ -15,8 +15,8 @@
 <div id="ui">
     <h1>🎭 Grid Block Theater</h1>
     <div class="controls">
-        ⌨️ <b>Arrow Keys</b> to Move/Jump<br>
-        🎯 Reach the <b>Green Door</b><br>
+        ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
+        🎯 Find the <b>Green Door</b> (It's far right!)<br>
         ⚠️ Avoid <b>Red Spikes</b>
     </div>
 </div>
@@ -24,18 +24,18 @@
 
 <script>
 /**
- * CONFIGURATION & ASSETS
- * Requested Assets for full "Stink" vibe:
- * 1. assets/img/block_wood.png (Side view of block)
- * 2. assets/img/block_grass.png (Top view)
- * 3. assets/img/char_idle.png (Blocky character)
- * 4. assets/img/spike.png
+ * ASSET CONFIGURATION
+ * Provide these for the full "Stink" vibe:
+ * 1. assets/img/block_top.png
+ * 2. assets/img/block_side.png
+ * 3. assets/img/char_sprite.png
+ * 4. assets/img/spike_sprite.png
  */
 const ASSETS = {
-    blockTop: 'assets/img/block_grass.png',
-    blockSide: 'assets/img/block_wood.png',
-    char: 'assets/img/char_idle.png',
-    spike: 'assets/img/spike.png'
+    blockTop: 'assets/img/block_top.png',
+    blockSide: 'assets/img/block_side.png',
+    char: 'assets/img/char_sprite.png',
+    spike: 'assets/img/spike_sprite.png'
 };
 const images = {};
 let loaded = 0;
@@ -47,30 +47,31 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 // Game Constants
-const TILE = 48; // Grid size
+const TILE = 50; 
 const GRAVITY = 0.6;
-const JUMP = -10;
-const SPEED = 5;
-const SKEW = 0.3; // The "Funny Angle" slant factor
+const JUMP = -11;
+const SPEED = 0.8;
+const FRICTION = 0.85;
 
-// Level Map (2D Grid)
+// Expanded Level Map (Wider to show scrolling)
 // 0: Air, 1: Block, 2: Spike, 3: Start, 9: Goal
 const levelMap = [
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0] // Start at bottom left
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0] 
+    // Start Left (3), Goal Right (9)
 ];
 
 const rows = levelMap.length;
@@ -78,11 +79,15 @@ const cols = levelMap[0].length;
 
 // Player State
 let player = {
-    x: 1, y: 1, // Grid coordinates (float for smooth movement)
+    x: 1, y: 1, // Grid coordinates (float)
     vx: 0, vy: 0,
+    w: 0.7, h: 0.9,
     grounded: false,
-    w: 0.8, h: 0.9 // Size relative to tile
+    facingRight: true
 };
+
+// Camera State
+let camera = { x: 0, y: 0 };
 
 // Input
 const keys = {};
@@ -97,11 +102,10 @@ window.addEventListener('resize', resize);
 resize();
 
 function reset() {
-    // Find start
     for(let r=0; r<rows; r++) {
         for(let c=0; c<cols; c++) {
             if(levelMap[r][c] === 3) {
-                player.x = c + 0.1;
+                player.x = c + 0.15;
                 player.y = r + 0.1;
                 player.vx = 0; player.vy = 0;
             }
@@ -110,40 +114,46 @@ function reset() {
 }
 
 /**
- * PHYSICS & COLLISION
+ * PHYSICS
  */
 function update() {
-    // Horizontal Movement
-    if(keys['ArrowRight'] || keys['KeyD']) player.vx += 1;
-    if(keys['ArrowLeft'] || keys['KeyA']) player.vx -= 1;
-    
-    // Friction
-    player.vx *= 0.85;
-    
-    // Apply X
-    player.x += player.vx * 0.1; // Scale speed to grid units
+    // Input
+    if(keys['ArrowRight'] || keys['KeyD']) { player.vx += SPEED; player.facingRight = true; }
+    if(keys['ArrowLeft'] || keys['KeyA']) { player.vx -= SPEED; player.facingRight = false; }
+    if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
+        player.vy = JUMP;
+        player.grounded = false;
+    }
+
+    // Physics
+    player.vx *= FRICTION;
+    player.x += player.vx * 0.1; // Normalize speed to grid units
     
     // Collision X
     checkCollision(true);
 
-    // Jumping
-    if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
-        player.vy = JUMP * 0.15; // Scale jump to grid units
-        player.grounded = false;
-    }
-
-    // Gravity
-    player.vy += GRAVITY * 0.1;
-    
-    // Apply Y
-    player.y += player.vy;
+    player.vy += GRAVITY;
+    player.y += player.vy * 0.1;
     player.grounded = false;
-    
+
     // Collision Y
     checkCollision(false);
 
-    // Bounds check (Fall off world)
+    // Death by falling
     if(player.y > rows) reset();
+
+    // Update Camera
+    // Target is player position in pixels
+    const targetCamX = (player.x * TILE) - (canvas.width / 2) + (TILE * player.w / 2);
+    const targetCamY = (player.y * TILE) - (canvas.height / 1.5);
+    
+    // Smooth camera lerp (Linear Interpolation)
+    camera.x += (targetCamX - camera.x) * 0.1;
+    camera.y += (targetCamY - camera.y) * 0.1;
+
+    // Clamp Camera to map bounds (Optional, keeps it from showing void)
+    camera.x = Math.max(0, Math.min(camera.x, (cols * TILE) - canvas.width));
+    camera.y = Math.max(0, Math.min(camera.y, (rows * TILE) - canvas.height));
 }
 
 function checkCollision(isX) {
@@ -152,36 +162,31 @@ function checkCollision(isX) {
     const c1 = Math.floor(player.x);
     const c2 = Math.floor(player.x + player.w);
 
-    // Check all tiles the player overlaps
     for(let r = r1; r <= r2; r++) {
         for(let c = c1; c <= c2; c++) {
             if(r < 0 || r >= rows || c < 0 || c >= cols) continue;
-            
             const tile = levelMap[r][c];
             
-            if(tile === 1) { // Solid Block
+            if(tile === 1) { // Solid
                 if(isX) {
                     if(player.vx > 0) player.x = c - player.w - 0.01;
                     else if(player.vx < 0) player.x = c + 1.01;
                     player.vx = 0;
                 } else {
-                    if(player.vy > 0) { // Falling
+                    if(player.vy > 0) {
                         player.y = r - player.h - 0.01;
                         player.grounded = true;
                         player.vy = 0;
-                    } else if(player.vy < 0) { // Hitting head
+                    } else if(player.vy < 0) {
                         player.y = r + 1.01;
                         player.vy = 0;
                     }
                 }
             } else if(tile === 2) { // Spike
-                // Simple AABB check for spikes
-                if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
-                    reset();
-                }
+                if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) reset();
             } else if(tile === 9) { // Goal
                 if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
-                    alert("Curtain Call! 🎭 Level Complete!");
+                    alert("Curtain Call! 🎭");
                     reset();
                 }
             }
@@ -190,91 +195,78 @@ function checkCollision(isX) {
 }
 
 /**
- * RENDERING (The "Funny Angle")
- * We draw the grid with a slight horizontal skew based on Y position
- * to simulate a 2.5D perspective without full 3D math.
+ * RENDERING WITH CAMERA
  */
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    const offsetX = canvas.width / 2 - (cols * TILE) / 2;
-    const offsetY = canvas.height / 1.5;
 
-    // Helper to get screen pos with "Fake Iso" skew
-    const getPos = (c, r) => {
-        // Skew: Shift X based on Row (Y). Higher rows (lower index) shift right?
-        // Actually, for a "stage" look, let's just skew based on Y screen coord
-        const screenX = offsetX + c * TILE;
-        const screenY = offsetY + r * TILE;
-        return { x: screenX, y: screenY };
-    };
+    // Calculate visible range to optimize drawing (Culling)
+    const startCol = Math.floor(camera.x / TILE);
+    const endCol = startCol + (canvas.width / TILE) + 1;
+    const startRow = Math.floor(camera.y / TILE);
+    const endRow = startRow + (canvas.height / TILE) + 1;
 
     // Draw Map
-    for(let r=0; r<rows; r++) {
-        for(let c=0; c<cols; c++) {
+    for(let r = startRow; r <= endRow; r++) {
+        for(let c = startCol; c <= endCol; c++) {
+            if(r < 0 || r >= rows || c < 0 || c >= cols) continue;
             const tile = levelMap[r][c];
             if(tile === 0) continue;
 
-            const pos = getPos(c, r);
-            
+            // Screen Position = World Position - Camera Position
+            const drawX = (c * TILE) - camera.x;
+            const drawY = (r * TILE) - camera.y;
+
             // Draw Block (Pseudo 3D)
-            // Top Face
-            ctx.fillStyle = tile === 9 ? '#2ecc71' : (tile === 2 ? '#e74c3c' : '#f1c40f');
             if(tile === 1) {
-                // Draw Top
-                ctx.beginPath();
-                ctx.moveTo(pos.x, pos.y);
-                ctx.lineTo(pos.x + TILE, pos.y);
-                ctx.lineTo(pos.x + TILE, pos.y - 10); // Fake depth
-                ctx.lineTo(pos.x, pos.y - 10);
-                ctx.fill();
-                ctx.stroke();
-                
-                // Draw Side (Front)
+                // Top
+                ctx.fillStyle = '#f1c40f';
+                ctx.fillRect(drawX, drawY - 10, TILE, 10);
+                ctx.strokeRect(drawX, drawY - 10, TILE, 10);
+                // Side
                 ctx.fillStyle = '#d35400';
-                ctx.fillRect(pos.x, pos.y, TILE, TILE);
-                ctx.strokeRect(pos.x, pos.y, TILE, TILE);
-                
-                // Detail (Wood grain hint)
+                ctx.fillRect(drawX, drawY, TILE, TILE);
+                ctx.strokeRect(drawX, drawY, TILE, TILE);
+                // Detail
                 ctx.fillStyle = 'rgba(0,0,0,0.1)';
-                ctx.fillRect(pos.x + 5, pos.y + 5, TILE-10, TILE-10);
+                ctx.fillRect(drawX+5, drawY+5, TILE-10, TILE-10);
             } else if (tile === 2) {
                 // Spike
                 ctx.fillStyle = '#c0392b';
                 ctx.beginPath();
-                ctx.moveTo(pos.x, pos.y + TILE);
-                ctx.lineTo(pos.x + TILE/2, pos.y);
-                ctx.lineTo(pos.x + TILE, pos.y + TILE);
+                ctx.moveTo(drawX, drawY + TILE);
+                ctx.lineTo(drawX + TILE/2, drawY);
+                ctx.lineTo(drawX + TILE, drawY + TILE);
                 ctx.fill();
             } else if (tile === 9) {
-                // Goal Door
-                ctx.fillStyle = '#27ae60';
-                ctx.fillRect(pos.x + 10, pos.y - 20, TILE - 20, TILE + 20);
-                ctx.fillStyle = '#f1c40f'; // Knob
-                ctx.beginPath(); ctx.arc(pos.x + TILE - 20, pos.y + TILE/2, 4, 0, Math.PI*2); ctx.fill();
+                // Goal
+                ctx.fillStyle = '#2ecc71';
+                ctx.fillRect(drawX + 10, drawY - 20, TILE - 20, TILE + 20);
+                ctx.fillStyle = '#f1c40f';
+                ctx.beginPath(); ctx.arc(drawX + TILE - 15, drawY + TILE/2, 4, 0, Math.PI*2); ctx.fill();
             }
         }
     }
 
-    // Draw Player
-    const pPos = getPos(player.x, player.y);
-    // Adjust for skew in drawing
-    const drawX = pPos.x;
-    const drawY = pPos.y - 10; // Sit on top of block
+    // Draw Player (Relative to Camera)
+    const pDrawX = (player.x * TILE) - camera.x;
+    const pDrawY = (player.y * TILE) - camera.y;
 
-    // Simple Blocky Character
+    // Character Body
     ctx.fillStyle = '#3498db';
-    ctx.fillRect(drawX + 5, drawY + (TILE * player.h) - (TILE * 0.9), TILE * player.w, TILE * player.h);
+    ctx.fillRect(pDrawX + (TILE*(1-player.w)/2), pDrawY + (TILE * (1-player.h)), TILE * player.w, TILE * player.h);
     
-    // Eyes (BattleBlock style)
+    // Eyes
     ctx.fillStyle = 'white';
-    ctx.fillRect(drawX + 8, drawY + 10, 10, 10);
-    ctx.fillRect(drawX + 24, drawY + 10, 10, 10);
+    const eyeOffset = player.facingRight ? 4 : -4;
+    const baseEyeX = pDrawX + (TILE*(1-player.w)/2);
+    const baseEyeY = pDrawY + (TILE * (1-player.h)) + 10;
+    
+    ctx.fillRect(baseEyeX + 8 + eyeOffset, baseEyeY, 10, 10);
+    ctx.fillRect(baseEyeX + 24 + eyeOffset, baseEyeY, 10, 10);
     ctx.fillStyle = 'black';
-    // Look direction
-    const lookOffset = player.vx > 0.5 ? 4 : (player.vx < -0.5 ? -4 : 0);
-    ctx.fillRect(drawX + 8 + lookOffset, drawY + 12, 4, 4);
-    ctx.fillRect(drawX + 24 + lookOffset, drawY + 12, 4, 4);
+    ctx.fillRect(baseEyeX + 8 + eyeOffset + (player.facingRight?2:-2), baseEyeY+2, 4, 4);
+    ctx.fillRect(baseEyeX + 24 + eyeOffset + (player.facingRight?2:-2), baseEyeY+2, 4, 4);
 
     requestAnimationFrame(loop);
 }

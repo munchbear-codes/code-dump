@@ -85,17 +85,17 @@ export class RenderEngine {
             return;
         }
 
-        const bob = player.grounded && !player.crouching ? Math.sin(Date.now() / 260) * 3 : 0;
-        const squatOffset = player.crouching ? 8 : 0;
-        const squatScale = player.crouching ? 0.8 : 1;
-
         this.ctx.fillStyle = 'rgba(0,0,0,0.3)';
         this.ctx.beginPath();
         this.ctx.ellipse(px + size / 2, drawPy + size - 2, 16 + (player.crouching ? 2 : 0), 7, 0, 0, Math.PI * 2);
         this.ctx.fill();
 
         this.ctx.save();
-        this.ctx.translate(pX + pW / 2, pY + pH / 2 + bob + squatOffset);
+        const playerBob = player.grounded ? Math.sin(Date.now() / 100) * 2 : 0;
+        const squatOffset = player.crouching ? 10 : 0;
+        const squatScale = player.crouching ? 0.82 : 1;
+
+        this.ctx.translate(pX + pW / 2, pY + pH / 2 + playerBob + squatOffset);
         if (player.facing < 0) {
             this.ctx.scale(-1, 1);
         }
@@ -103,49 +103,41 @@ export class RenderEngine {
             this.ctx.scale(1, squatScale);
         }
 
-        this.ctx.fillStyle = '#ff7f50';
-        this.ctx.strokeStyle = '#2b1b12';
+        this.ctx.fillStyle = player.color;
+        this.ctx.strokeStyle = '#000000';
         this.ctx.lineWidth = 3;
 
         this.ctx.beginPath();
-        this.ctx.roundRect(-18, -18, 36, 42, 10);
+        this.ctx.roundRect(-player.width / 2, -player.height / 2 + 10, player.width, player.height - 10, 10);
         this.ctx.fill();
         this.ctx.stroke();
 
-        this.ctx.fillStyle = '#d4a373';
         this.ctx.beginPath();
-        this.ctx.arc(0, -42, 18, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.stroke();
-
-        this.ctx.fillStyle = '#7b3f00';
-        this.ctx.beginPath();
-        this.ctx.arc(0, -42, 11, 0, Math.PI * 2);
+        this.ctx.arc(0, -player.height / 2 + 5 + playerBob, 20, 0, Math.PI * 2);
         this.ctx.fill();
         this.ctx.stroke();
 
         this.ctx.fillStyle = '#ffffff';
+        let playerLookDir = window.keys.right ? 4 : (window.keys.left ? -4 : 0);
+
         this.ctx.beginPath();
-        this.ctx.arc(6, -42, 4, 0, Math.PI * 2);
-        this.ctx.arc(-6, -42, 4, 0, Math.PI * 2);
+        this.ctx.arc(6 + playerLookDir, -player.height / 2 + 5 + playerBob, 6, 0, Math.PI * 2);
+        this.ctx.arc(-6 + playerLookDir, -player.height / 2 + 5 + playerBob, 6, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.fillStyle = '#000000';
+        this.ctx.beginPath();
+        this.ctx.arc(8 + playerLookDir, -player.height / 2 + 5 + playerBob, 2, 0, Math.PI * 2);
+        this.ctx.arc(-4 + playerLookDir, -player.height / 2 + 5 + playerBob, 2, 0, Math.PI * 2);
         this.ctx.fill();
 
-        this.ctx.fillStyle = '#1f1f1f';
+        this.ctx.fillStyle = player.color;
         this.ctx.beginPath();
-        this.ctx.arc(6, -42, 2, 0, Math.PI * 2);
-        this.ctx.arc(-6, -42, 2, 0, Math.PI * 2);
+        this.ctx.arc(-15, 10 + playerBob, 5, 0, Math.PI * 2);
+        this.ctx.arc(15, 10 + playerBob, 5, 0, Math.PI * 2);
         this.ctx.fill();
-
-        this.ctx.fillStyle = '#ff7f50';
-        this.ctx.fillRect(-22, -6, 10, 6);
-        this.ctx.fillRect(12, -6, 10, 6);
-
-        this.ctx.fillStyle = '#5d4037';
-        this.ctx.fillRect(-10, 12, 8, 20);
-        this.ctx.fillRect(2, 12, 8, 20);
-
-        this.ctx.fillRect(-10, 30, 8, 6);
-        this.ctx.fillRect(2, 30, 8, 6);
+        this.ctx.stroke();
 
         this.ctx.restore();
     }

@@ -2,6 +2,9 @@ export class Player {
     constructor() {
         this.w = 0.6;
         this.h = 0.8;
+        this.width = 34;
+        this.height = 52;
+        this.color = '#ff7f50';
         this.reset();
     }
 

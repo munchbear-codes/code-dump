@@ -2,35 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Smooth Isometric Side-Scroller</title>
+    <title>Fixed Iso Platformer</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; }
         canvas { display: block; }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 2px 2px 0 #000; pointer-events: none; }
-        .controls { background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; border: 2px solid #fff; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; text-shadow: 1px 1px 2px black; pointer-events: none; }
     </style>
 </head>
 <body>
-
-<div id="ui">
-    <h1>🧊 Smooth Iso-Platformer</h1>
-    <div class="controls">
-        ⌨️ <b>Arrow Keys / WASD</b> to Move & Jump<br>
-        🎯 Reach the <b>Green Flag</b>
-    </div>
-</div>
+<div id="ui"><h1>🧊 Fixed: No Jitter, Safe Spawn</h1><p>Arrows/WASD to Move & Jump</p></div>
 <canvas id="gameCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// --- CONFIGURATION ---
-const TILE_SIZE = 50; // Uniform size for logic AND rendering
-const BLOCK_DEPTH = 15; // Visual offset for the 3D effect (doesn't affect physics)
+// --- CONFIG ---
+const TILE = 50; 
+const MAP_W = 20;
+const MAP_H = 15;
 
-// 2D Grid Map (1 = Solid, 0 = Air, 2 = Spike, 3 = Start, 9 = Goal)
-const levelMap = [
+// Map: 0=Air, 1=Wall, 2=Spike, 3=Start, 9=Goal
+// NOTE: Start (3) is surrounded by Air (0) to guarantee safety.
+const map = [
     [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
     [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
     [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,0,0],
@@ -45,106 +39,97 @@ const levelMap = [
     [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
     [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
     [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
-    [3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0]
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0] // Start area cleared below
 ];
 
-const rows = levelMap.length;
-const cols = levelMap[0].length;
+// Explicitly clear the start zone to ensure no walls touch the spawn point
+map[14][0] = 3; // Start
+map[13][0] = 0; map[13][1] = 0;
+map[14][1] = 0; map[14][2] = 0;
+map[12][0] = 0; map[12][1] = 0;
 
-// Player State
-let player = {
-    x: 1, y: 1, // Grid coordinates (float)
-    vx: 0, vy: 0,
-    w: 0.6, h: 0.8, // Slightly smaller than tile for forgiveness
-    grounded: false,
-    facingRight: true
-};
-
+let player = { x: 0, y: 0, vx: 0, vy: 0, w: 0.6, h: 0.8, grounded: false };
 let camera = { x: 0, y: 0 };
-const keys = {};
+let keys = {};
 
 window.addEventListener('keydown', e => keys[e.code] = true);
 window.addEventListener('keyup', e => keys[e.code] = false);
-window.addEventListener('resize', resize);
-
-function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-resize();
+window.addEventListener('resize', () => { canvas.width = innerWidth; canvas.height = innerHeight; });
+canvas.width = innerWidth; canvas.height = innerHeight;
 
 function reset() {
-    for(let r=0; r<rows; r++) {
-        for(let c=0; c<cols; c++) {
-            if(levelMap[r][c] === 3) {
-                player.x = c + 0.2;
-                player.y = r + 0.1;
-                player.vx = 0; player.vy = 0;
+    player.vx = 0; player.vy = 0;
+    // FIND START AND SPAWN ABOVE IT
+    for(let r=0; r<MAP_H; r++) {
+        for(let c=0; c<MAP_W; c++) {
+            if(map[r][c] === 3) {
+                player.x = c + 0.2; 
+                player.y = r - 0.5; // SPAWN HALF A TILE IN THE AIR (Safe Zone)
+                return;
             }
         }
     }
+    // Fallback if no start found
+    player.x = 2; player.y = 2;
 }
 
-// --- PHYSICS (Standard Square Grid) ---
 function update() {
-    const speed = 0.8;
-    const jumpForce = -12;
-    const gravity = 0.6;
-    const friction = 0.85;
-
-    // Input
-    if(keys['ArrowRight'] || keys['KeyD']) { player.vx += speed; player.facingRight = true; }
-    if(keys['ArrowLeft'] || keys['KeyA']) { player.vx -= speed; player.facingRight = false; }
+    // 1. Input
+    if(keys['ArrowRight'] || keys['KeyD']) player.vx += 1;
+    if(keys['ArrowLeft'] || keys['KeyA']) player.vx -= 1;
     if((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.grounded) {
-        player.vy = jumpForce;
+        player.vy = -13;
         player.grounded = false;
     }
 
-    // Apply Physics
-    player.vx *= friction;
-    player.x += player.vx * 0.1; // Scale input to grid units
-    checkCollision(true);
+    // 2. Physics X
+    player.vx *= 0.85;
+    player.x += player.vx * 0.1;
+    resolveCollision(true);
 
-    player.vy += gravity;
+    // 3. Physics Y
+    player.vy += 0.6; // Gravity
     player.y += player.vy * 0.1;
-    player.grounded = false;
-    checkCollision(false);
+    player.grounded = false; // Assume falling until collision proves otherwise
+    resolveCollision(false);
 
-    if(player.y > rows) reset();
+    // 4. Death Check
+    if(player.y > MAP_H) reset();
 
-    // Camera Follow (Smooth Lerp)
-    // Center the player on screen
-    const targetCamX = (player.x * TILE_SIZE) - (canvas.width / 2) + (TILE_SIZE/2);
-    const targetCamY = (player.y * TILE_SIZE) - (canvas.height / 2) + (TILE_SIZE/2);
+    // 5. Camera
+    let targetX = player.x * TILE - canvas.width/2;
+    let targetY = player.y * TILE - canvas.height/2;
+    camera.x += (targetX - camera.x) * 0.1;
+    camera.y += (targetY - camera.y) * 0.1;
     
-    camera.x += (targetCamX - camera.x) * 0.1;
-    camera.y += (targetCamY - camera.y) * 0.1;
+    // Clamp Camera
+    camera.x = Math.max(0, Math.min(camera.x, MAP_W*TILE - canvas.width));
+    camera.y = Math.max(0, Math.min(camera.y, MAP_H*TILE - canvas.height));
 }
 
-function checkCollision(isX) {
-    // Check surrounding tiles
-    const startCol = Math.floor(player.x);
-    const endCol = Math.floor(player.x + player.w);
-    const startRow = Math.floor(player.y);
-    const endRow = Math.floor(player.y + player.h);
+function resolveCollision(isX) {
+    let startCol = Math.floor(player.x);
+    let endCol = Math.floor(player.x + player.w);
+    let startRow = Math.floor(player.y);
+    let endRow = Math.floor(player.y + player.h);
 
     for(let r = startRow; r <= endRow; r++) {
         for(let c = startCol; c <= endCol; c++) {
-            if(r < 0 || r >= rows || c < 0 || c >= cols) continue;
-            const tile = levelMap[r][c];
+            if(r < 0 || r >= MAP_H || c < 0 || c >= MAP_W) continue;
+            let tile = map[r][c];
             
-            if(tile === 1) { // Solid Block
+            if(tile === 1) { // Wall
                 if(isX) {
-                    if(player.vx > 0) player.x = c - player.w - 0.01;
-                    else if(player.vx < 0) player.x = c + 1.01;
+                    if(player.vx > 0) player.x = c - player.w - 0.001;
+                    else if(player.vx < 0) player.x = c + 1.001;
                     player.vx = 0;
                 } else {
-                    if(player.vy > 0) { // Landing
-                        player.y = r - player.h - 0.01;
+                    if(player.vy > 0) { // Falling
+                        player.y = r - player.h - 0.001;
                         player.grounded = true;
                         player.vy = 0;
-                    } else if(player.vy < 0) { // Hitting head
-                        player.y = r + 1.01;
+                    } else if(player.vy < 0) { // Jumping up
+                        player.y = r + 1.001;
                         player.vy = 0;
                     }
                 }
@@ -152,120 +137,63 @@ function checkCollision(isX) {
                 if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) reset();
             } else if(tile === 9) { // Goal
                 if(player.x < c+1 && player.x+player.w > c && player.y < r+1 && player.y+player.h > r) {
-                    alert("You Win! 🎉");
-                    reset();
+                    alert("WIN!"); reset();
                 }
             }
         }
     }
 }
 
-// --- RENDERING ---
-
-function drawCube(c, r, type) {
-    // Screen Position (Uniform Scaling)
-    const x = (c * TILE_SIZE) - camera.x;
-    const y = (r * TILE_SIZE) - camera.y;
-
-    // Draw "3D Depth" (The sides of the cube sticking out)
-    // We draw these FIRST so they appear behind the front face
-    const depthX = BLOCK_DEPTH;
-    const depthY = -BLOCK_DEPTH; // Up and Right
-
-    // Right Side (Dark)
-    ctx.fillStyle = '#5d4037';
-    ctx.beginPath();
-    ctx.moveTo(x + TILE_SIZE, y);
-    ctx.lineTo(x + TILE_SIZE + depthX, y + depthY);
-    ctx.lineTo(x + TILE_SIZE + depthX, y + depthY + TILE_SIZE);
-    ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#3e2723'; ctx.stroke();
-
-    // Top Side (Medium)
-    ctx.fillStyle = '#795548';
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + TILE_SIZE, y);
-    ctx.lineTo(x + TILE_SIZE + depthX, y + depthY);
-    ctx.lineTo(x + depthX, y + depthY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Front Face (The main tile)
-    if(type === 9) ctx.fillStyle = '#2ecc71';
-    else if(type === 2) ctx.fillStyle = '#95a5a6';
-    else ctx.fillStyle = '#d7ccc8';
+function draw() {
+    ctx.clearRect(0,0,canvas.width, canvas.height);
     
-    ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-    ctx.strokeStyle = '#3e2723';
-    ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
-
-    // Draw Details
-    if(type === 2) { // Spike
-        ctx.fillStyle = '#c0392b';
-        ctx.beginPath();
-        ctx.moveTo(x + 10, y + TILE_SIZE);
-        ctx.lineTo(x + TILE_SIZE/2, y + TILE_SIZE - 20);
-        ctx.lineTo(x + TILE_SIZE - 10, y + TILE_SIZE);
-        ctx.fill();
-    }
-    if(type === 9) { // Goal
-        ctx.fillStyle = '#f1c40f';
-        ctx.fillRect(x + 20, y + 10, 4, 30);
-        ctx.fillStyle = '#e74c3c';
-        ctx.beginPath();
-        ctx.moveTo(x + 24, y + 10);
-        ctx.lineTo(x + 40, y + 20);
-        ctx.lineTo(x + 24, y + 30);
-        ctx.fill();
-    }
-}
-
-function drawPlayer() {
-    const x = (player.x * TILE_SIZE) - camera.x;
-    const y = (player.y * TILE_SIZE) - camera.y;
-
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath();
-    ctx.ellipse(x + TILE_SIZE/2, y + TILE_SIZE - 2, TILE_SIZE/3, 5, 0, 0, Math.PI*2);
-    ctx.fill();
-
-    // Body
-    ctx.fillStyle = '#3498db';
-    ctx.fillRect(x + (TILE_SIZE*(1-player.w)/2), y + (TILE_SIZE*(1-player.h)), TILE_SIZE*player.w, TILE_SIZE*player.h);
-    
-    // Eyes
-    ctx.fillStyle = 'white';
-    const eyeX = x + (TILE_SIZE*(1-player.w)/2) + (player.facingRight ? 18 : 8);
-    const eyeY = y + (TILE_SIZE*(1-player.h)) + 10;
-    ctx.fillRect(eyeX, eyeY, 10, 10);
-    ctx.fillStyle = 'black';
-    ctx.fillRect(eyeX + (player.facingRight?6:0), eyeY+2, 4, 4);
-}
-
-function loop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    update();
-
-    // Draw Visible Map
-    const startCol = Math.floor(camera.x / TILE_SIZE) - 1;
-    const endCol = startCol + (canvas.width / TILE_SIZE) + 2;
-    const startRow = Math.floor(camera.y / TILE_SIZE) - 1;
-    const endRow = startRow + (canvas.height / TILE_SIZE) + 2;
+    // Draw Map
+    let startCol = Math.floor(camera.x/TILE) - 1;
+    let endCol = startCol + (canvas.width/TILE) + 2;
+    let startRow = Math.floor(camera.y/TILE) - 1;
+    let endRow = startRow + (canvas.height/TILE) + 2;
 
     for(let r = startRow; r <= endRow; r++) {
         for(let c = startCol; c <= endCol; c++) {
-            if(r >= 0 && r < rows && c >= 0 && c < cols && levelMap[r][c] !== 0) {
-                drawCube(c, r, levelMap[r][c]);
+            if(r>=0 && r<MAP_H && c>=0 && c<MAP_W && map[r][c] !== 0) {
+                let x = c*TILE - camera.x;
+                let y = r*TILE - camera.y;
+                let type = map[r][c];
+                
+                // Draw 3D Cube
+                // Back/Top faces
+                ctx.fillStyle = '#795548'; // Top
+                ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+TILE,y); ctx.lineTo(x+TILE+15,y-15); ctx.lineTo(x+15,y-15); ctx.fill();
+                ctx.fillStyle = '#5d4037'; // Right
+                ctx.beginPath(); ctx.moveTo(x+TILE,y); ctx.lineTo(x+TILE+15,y-15); ctx.lineTo(x+TILE+15,y+TILE-15); ctx.lineTo(x+TILE,y+TILE); ctx.fill();
+                
+                // Front Face
+                ctx.fillStyle = type===9 ? '#2ecc71' : (type===2 ? '#95a5a6' : '#d7ccc8');
+                ctx.fillRect(x,y,TILE,TILE);
+                ctx.strokeRect(x,y,TILE,TILE);
+
+                if(type===2) { // Spike
+                    ctx.fillStyle='red'; ctx.beginPath(); ctx.moveTo(x+10,y+TILE); ctx.lineTo(x+25,y+TILE-20); ctx.lineTo(x+40,y+TILE); ctx.fill();
+                }
             }
         }
     }
 
-    drawPlayer();
+    // Draw Player
+    let px = player.x*TILE - camera.x;
+    let py = player.y*TILE - camera.y;
+    ctx.fillStyle = '#3498db';
+    ctx.fillRect(px + (TILE*(1-player.w)/2), py + (TILE*(1-player.h)), TILE*player.w, TILE*player.h);
+    // Eyes
+    ctx.fillStyle = 'white';
+    ctx.fillRect(px + 20, py + 10, 10, 10);
+    ctx.fillStyle = 'black';
+    ctx.fillRect(px + 24, py + 12, 4, 4);
+}
+
+function loop() {
+    update();
+    draw();
     requestAnimationFrame(loop);
 }
 

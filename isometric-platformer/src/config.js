@@ -5,7 +5,7 @@ export const GameConfig = {
     GRAVITY: 0.5,
     JUMP_FORCE: -12,
     MOVE_SPEED: 1,
-    MOVING_BLOCK_SPEED: 0.25,
+    MOVING_BLOCK_SPEED: 0.05,
     CAMERA_LERP: 0.1,
     TILES: {
         AIR: 0,

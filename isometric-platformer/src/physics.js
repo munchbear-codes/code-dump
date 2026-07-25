@@ -84,15 +84,46 @@ export class PhysicsEngine {
                 continue;
             }
 
+            const dx = block.c - block.lastC;
+            const dy = block.r - block.lastR;
+            const proposedX = object.x + dx;
+            const proposedY = block.r - object.h + dy;
+
+            const wouldCollide = proposedX < 0 || proposedX + object.w > this.level.width || proposedY < 0 || this.isPositionBlocked(object, proposedX, proposedY);
+            if (wouldCollide) {
+                object.grounded = false;
+                object.vy = 0.35;
+                object.y += 0.2;
+                object.x += Math.sign(dx || 1) * 0.1;
+                if (object.x < 0) object.x = 0;
+                if (object.x + object.w > this.level.width) object.x = this.level.width - object.w;
+                break;
+            }
+
             object.y = block.r - object.h;
             object.grounded = true;
             object.vy = 0;
-
-            const dx = block.c - block.lastC;
-            const dy = block.r - block.lastR;
-            object.x += dx;
+            object.x = proposedX;
             object.y += dy;
             break;
         }
+    }
+
+    isPositionBlocked(object, x, y) {
+        const left = Math.floor(x);
+        const right = Math.floor(x + object.w - 0.01);
+        const top = Math.floor(y);
+        const bottom = Math.floor(y + object.h - 0.01);
+
+        for (let r = top; r <= bottom; r++) {
+            for (let c = left; c <= right; c++) {
+                const tile = this.level.getTile(c, r);
+                if (tile === GameConfig.TILES.WALL) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

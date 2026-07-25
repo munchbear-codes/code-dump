@@ -31,18 +31,25 @@ export class LevelManager {
     }
 
     getTile(c, r) {
-        if (r < 0 || r >= this.height || c < 0 || c >= this.width) {
+        const col = Math.floor(c);
+        const row = Math.floor(r);
+
+        if (row < 0 || row >= this.height || col < 0 || col >= this.width) {
             return GameConfig.TILES.WALL;
         }
-        return this.matrix[r][c];
+        return this.matrix[row][col];
     }
 
     getMovingBlockAt(c, r) {
-        return this.movingBlocks.find(block => Math.round(block.c) === c && Math.round(block.r) === r);
+        const col = Math.round(c);
+        const row = Math.round(r);
+        return this.movingBlocks.find(block => Math.round(block.c) === col && Math.round(block.r) === row);
     }
 
     isSolidAt(c, r) {
-        return this.getTile(c, r) !== GameConfig.TILES.AIR || !!this.getMovingBlockAt(c, r);
+        const col = Math.floor(c);
+        const row = Math.floor(r);
+        return this.getTile(col, row) !== GameConfig.TILES.AIR || !!this.getMovingBlockAt(col, row);
     }
 
     updateMovingBlocks() {
@@ -67,10 +74,13 @@ export class LevelManager {
     }
 
     isBlocked(c, r, currentBlock) {
-        if (!this.getTile(c, r)) {
+        const col = Math.round(c);
+        const row = Math.round(r);
+
+        if (!this.getTile(col, row)) {
             return false;
         }
-        return this.movingBlocks.some(block => block !== currentBlock && Math.round(block.c) === c && Math.round(block.r) === r);
+        return this.movingBlocks.some(block => block !== currentBlock && Math.round(block.c) === col && Math.round(block.r) === row);
     }
 
     hasSolidBlockAbove(c, r) {
